@@ -58,3 +58,6 @@ def provision(name, url, credentials):
             'Audiences': ['relay-demo'], 'ScopeRequiredToConnect': 'relay.demo',
             'Authenticator': {'Namespace': '%SYS', 'Implementation': '%OAuth2.ResourceServer.SimpleAuthenticator'},
         })
+
+    if request('/v2/security/role?name=RelayDemoRole')[0] == 404:
+        request('/v2/security/role?name=RelayDemoRole', 'PUT', {'Description':'Disposable unassigned Relay role', 'Resources':[], 'GrantedRoles':[], 'EscalationOnly':False})

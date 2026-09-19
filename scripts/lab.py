@@ -64,9 +64,12 @@ session('''if '##class(Security.Users).Exists("RelayLab") { set sc=##class(Secur
 if '##class(Security.Users).Exists("RelayObserver") { set sc=##class(Security.Users).Create("RelayObserver","%%Operator","%s") if $SYSTEM.Status.IsError(sc) { halt } }
 write "RELAY_READY",!
 ''' % (creds['password'],creds['observerPassword']))
-command('docker','exec',NAME,'mkdir','-p','/tmp/relay-src')
+command('docker','exec',NAME,'mkdir','-p','/tmp/relay-src','/usr/irissys/mgr/relay')
+command('docker','cp',str(ROOT/'src'/'Relay'/'log_reader.py'),NAME+':/usr/irissys/mgr/relay/log_reader.py')
 command('docker','cp',str(ROOT/'src'/'Relay')+'/.',NAME+':/tmp/relay-src')
-session('''set sc=$SYSTEM.OBJ.LoadDir("/tmp/relay-src","ck",,1)
+session('''set sc=$SYSTEM.OBJ.Load("/tmp/relay-src/LogReader.cls","ck")
+if $SYSTEM.Status.IsError(sc) { halt }
+set sc=$SYSTEM.OBJ.Load("/tmp/relay-src/Api.cls","ck")
 if $SYSTEM.Status.IsError(sc) { halt }
 set props("NameSpace")="%SYS",props("DispatchClass")="Relay.Api",props("AutheEnabled")=32,props("Enabled")=1
 if '##class(Security.Applications).Exists("/api/relay") { set sc=##class(Security.Applications).Create("/api/relay",.props) if $SYSTEM.Status.IsError(sc) { halt } }

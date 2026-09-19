@@ -7,8 +7,8 @@ import json,urllib.request,urllib.error,http.cookiejar,base64
 from pathlib import Path
 import os
 os.chdir(Path(__file__).resolve().parents[1])
-c=json.loads(Path('artifacts/lab-credentials.json').read_text())
-jar=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar)); origin='http://127.0.0.1:8787';csrf=''
+c=json.loads(Path(os.environ.get('RELAY_CREDENTIALS','artifacts/lab-credentials.json')).read_text())
+jar=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar)); origin=os.environ.get('RELAY_ORIGIN','http://127.0.0.1:8787');csrf=''
 def api(path,method='GET',data=None):
  req=urllib.request.Request(origin+path,method=method,headers={'Origin':origin,'Content-Type':'application/json','X-Relay-CSRF':csrf},data=json.dumps(data).encode() if data is not None else None)
  try:
@@ -34,7 +34,7 @@ for kind,name,changes in [('webapps','/relay-demo',[{'enabled':True},{'enabled':
   if code==200:
    code,a=api('/api/manage/apply','POST',{'token':p['token']});assert code==200 and a['verified']
 code,catalog=api('/api/explorer/catalog');assert code==200
-parameters={'webapp':{'name':'/relay-demo'},'user':{'name':'RelayDemoUser'},'role':{'name':'%Operator'},'collection':{'name':'RelayDemo'},'secretNames':{'collection':'RelayDemo'},'certificate':{'alias':'RelayMissingFixture'},'x509':{'alias':'RelayMissingFixture'},'oauthDefinition':{'serverId':2147483647}}
+parameters={'tlsDetail':{'name':'RelayDemoTLS'},'roleOwners':{'name':'RelayDemoRole'},'webapp':{'name':'/relay-demo'},'user':{'name':'RelayDemoUser'},'role':{'name':'%Operator'},'collection':{'name':'RelayDemo'},'secretNames':{'collection':'RelayDemo'},'certificate':{'alias':'RelayMissingFixture'},'x509':{'alias':'RelayMissingFixture'},'oauthDefinition':{'serverId':2147483647}}
 for operation in catalog['operations']:
  code,result=api('/api/explorer/run','POST',{'operation':operation,'parameters':parameters.get(operation,{})})
  expected=404 if operation in ['certificate','x509','oauthDefinition'] else 200
