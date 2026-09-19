@@ -16,6 +16,9 @@ const sessionLifetime = 30 * 60 * 1000;
 const maxBytes = 2 * 1024 * 1024;
 const publicDir = fileURLToPath(new URL("./public/", import.meta.url));
 const files = {
+  "/demo.js": ["demo.js", "text/javascript"],
+  "/logs-ui.js": ["logs-ui.js", "text/javascript"],
+  "/configuration-ui.js": ["configuration-ui.js", "text/javascript"],
   "/": ["index.html", "text/html"],
   "/app.js": ["app.js", "text/javascript"],
   "/audit-ui.js": ["audit-ui.js", "text/javascript"],
@@ -279,6 +282,46 @@ export function createApp({
           },
         );
       }
+      if (
+        ["/api/logs/sources", "/api/logs/page"].includes(url.pathname) &&
+        req.method === "GET"
+      ) {
+        const source = url.searchParams.get("source") || "runtime",
+          cursor = url.searchParams.get("cursor") || "";
+        if (
+          !/^(runtime|console|system-monitor|alerts)(\.[1-3])?$/.test(source) ||
+          cursor.length > 1024 ||
+          !/^[A-Za-z0-9_=-]*$/.test(cursor)
+        )
+          return reply(res, 400, { error: "Invalid log source or cursor." });
+        const list = url.pathname.endsWith("sources");
+        const result = await upstream(
+          session.credentials,
+          list
+            ? "/log-sources"
+            : "/logs?" + new URLSearchParams({ source, cursor }),
+          "GET",
+          undefined,
+          "/api/relay",
+        );
+        if (!result.ok)
+          return reply(res, result.status, { error: result.error });
+        if (result.data.error)
+          return reply(res, 409, { error: result.data.error });
+        return reply(
+          res,
+          200,
+          list
+            ? result.data
+            : {
+                resource: "logs",
+                observedAt: result.data.observedAt,
+                limit: 150,
+                data: result.data.rows,
+                metadata: { ...result.data, rows: undefined },
+              },
+        );
+      }
       if (url.pathname === "/api/audit/query" && req.method === "POST")
         return reply(
           res,
@@ -314,6 +357,12 @@ export function createApp({
           upstream,
         );
         const { path, ...visible } = state;
+        if (state.kind === "rolePolicy")
+          visible.owners = await upstream(
+            session.credentials,
+            "/v2/security/role/owners?" +
+              new URLSearchParams({ name: state.name, maxRows: "100" }),
+          );
         if (state.kind === "certificates")
           visible.certificate = await upstream(
             session.credentials,
@@ -473,6 +522,8 @@ export function createApp({
           resource.base,
         );
         if (id === "runtime" && result.ok) {
+          if (result.data.error)
+            return reply(res, 409, { error: result.data.error });
           const { rows, ...metadata } = result.data;
           if (!Array.isArray(rows))
             return reply(res, 502, {

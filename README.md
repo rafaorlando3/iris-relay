@@ -4,17 +4,23 @@ An operations workspace for InterSystems IRIS 2026.2. Inspect live management da
 
 This is an experimental operations tool with a disposable demonstration lab. It does not replace the entire Management Portal; see the scope and validation notes below.
 
+## New in 0.2
+
+TLS policy editing, custom role resource permissions, OAuth issuer/audience/scope configuration, backward text-log paging and session change evidence in handovers. See [release details](docs/RELEASE-0.2.md) and [log coverage](docs/LOGS.md).
+
+An interactive fictional walkthrough is included under `docs/demo`. Run `python3 -m http.server 8790 --bind 127.0.0.1 --directory docs/demo` and open http://127.0.0.1:8790. It makes no IRIS requests and asks for no credentials. Use the laboratory below to evaluate the real integration.
+
 ## What works
 
-* Fifteen live data views, an asynchronous audit log query, and a REST explorer with 25 curated GET operations: system overview, system resources, processes, devices, scheduled tasks, task history, runtime log, journal files, web applications, roles, users, wallet collections, X.509 credentials, OAuth server definitions, and OAuth resource servers.
+* Sixteen live data views, an asynchronous audit log query, and a REST explorer with 28 curated GET operations: system overview, system resources, processes, devices, scheduled tasks, task history, runtime log, journal files, web applications, roles, users, wallet collections, X.509 credentials, OAuth server definitions, and OAuth resource servers.
 * Baseline comparison by record identity. A missing row is reported as absent from the response, never assumed deleted.
 * Task suspension and resumption with an expiring review step, a fresh state check, a single-use confirmation token, and verification against IRIS after the change. Only user-defined tasks can be changed.
-* Enable or disable a custom web application, inspect role definitions, and replace direct role assignments on an ordinary user. Every edit has a before/after preview, fresh configuration check and verified readback.
+* Enable or disable a custom web application, inspect role definitions, edit custom role resource policies, and replace direct role assignments on an ordinary user. Every edit has a before/after preview, fresh configuration check and verified readback.
 * Wallet collection access policy editing with resource validation, public-resource rejection, a before/after preview and verified readback. Secret inventory exposes names and types only.
-* X.509 credential owner-list editing and OAuth resource server availability changes, each with preview, concurrency checks and verified readback. Certificate keys and provider configuration are not changed.
+* X.509 credential owner-list editing and OAuth resource server availability changes, each with preview, concurrency checks and verified readback. Certificate keys are not changed. The resource-server editor additionally supports existing HTTPS issuer, accepted audiences and required scope; this does not prove a working provider login.
 * Bounded asynchronous audit queries with explicit queued/running/finished states, session isolation and summary-only results.
 * Markdown and JSON handover exports with timestamps, limits, before/after evidence, and optional operator notes.
-* Runtime log reading implemented in Embedded Python inside IRIS. It reads a bounded tail of `messages.log`, not an arbitrary file supplied by the browser.
+* Runtime log reading implemented in Embedded Python inside IRIS. It reads fixed runtime, console, System Monitor and alert text sources with bounded backward paging, not arbitrary browser-supplied files. See [coverage](docs/LOGS.md).
 * Permission hints from IRIS, explicit forbidden/unavailable states, and backend enforcement by the real IRIS account.
 
 ## Requirements
@@ -52,7 +58,7 @@ IRIS_URL=https://your-test-instance.example PORT=8787 npm start
 
 The URL is an operator-configured origin, not an arbitrary browser-provided proxy destination. HTTP is accepted only for loopback targets; remote targets require HTTPS with valid certificates. Existing instances need Basic authentication on `/api/admin`. Enter an account with only the privileges needed for your work. Relay does not elevate privileges.
 
-The optional runtime log extension consists of `src/Relay/Api.cls` and `src/Relay/LogReader.cls`. The local setup installs it in `%SYS` as `/api/relay`, with password authentication and a `%Admin_Operate:U` check. Without the extension the runtime log view reports unavailable; the standard management views still work.
+The optional runtime log extension consists of `src/Relay/Api.cls`, `src/Relay/LogReader.cls` and `src/Relay/log_reader.py`. Copy the Python file to `<IRIS manager directory>/relay/log_reader.py` and load both classes into `%SYS`. The local setup installs it in `%SYS` as `/api/relay`, with password authentication and a `%Admin_Operate:U` check. Without the extension the runtime log view reports unavailable; the standard management views still work.
 
 ## Review a task change
 
@@ -64,13 +70,13 @@ The 2026.2 laboratory returned an outdated `Suspended` value from `/v2/tasks` im
 
 In Web applications, select Manage on `/relay-demo`, change the status and select Review change. Confirm only after checking the target instance and before/after values. Only `Enabled` is sent to IRIS. Restore the disabled status after the demonstration. System applications, applications in `%SYS` and Relay's own connection are protected.
 
-In Users, open `RelayDemoUser`. Choose an existing role such as `%Operator`, review and confirm the assignment, then remove the role again. The account stays disabled throughout. Only `Roles` is sent; profile, password and escalation assignments are preserved. In Roles, select Inspect role to examine its resources, inherited roles and escalation setting.
+In Users, open `RelayDemoUser`. Choose an existing role such as `%Operator`, review and confirm the assignment, then remove the role again. The account stays disabled throughout. Only `Roles` is sent; profile, password and escalation assignments are preserved. In Roles, select Manage to inspect resources, inherited roles and escalation settings. Custom non-escalation roles also support reviewed description and resource-permission edits, with an impact inventory of up to 100 holders.
 
 The current signed-in account, recognized built-in accounts and direct `%All` holders are protected. Direct `%All` and `%Manager` grants and escalation-only grants are not supported. Other roles may still confer powerful or inherited access: this is a tool for authorized administrators, not a role sandbox. IRIS enforces `%Admin_Secure`. Changes to the target configuration or the selected role definitions invalidate the preview. These checks are optimistic, not an atomic IRIS transaction.
 
 ## Explore the API and wallet access
 
-REST explorer provides 25 documented, allowlisted GET operations with validated parameters. It shows HTTP status, elapsed request time, observed timestamp and the IRIS response. List requests are capped at 100 rows. Export the result as Markdown or JSON for handover. It cannot send arbitrary URLs, headers or write methods. Responses are direct API observations; for example, the task-list endpoint may still have the version-specific state lag described above.
+REST explorer provides 28 documented, allowlisted GET operations with validated parameters. It shows HTTP status, elapsed request time, observed timestamp and the IRIS response. List requests are capped at 100 rows. Export the result as Markdown or JSON for handover. It cannot send arbitrary URLs, headers or write methods. Responses are direct API observations; for example, the task-list endpoint may still have the version-specific state lag described above.
 
 For the laboratory demonstration choose Wallet collection policy, enter `RelayDemo`, and run the request. Then open Wallet collections and Manage. Change UseResource to `%Admin_Operate:USE`, review and confirm, and restore `%Admin_Wallet:USE` after the demonstration. The collection is empty: no real secret changes hands. Both resource names are checked against IRIS and any public permission on either resource blocks the change. The administrator needs the IRIS permissions to inspect security resources as well as manage the wallet. Secret values are not read, stored or edited by Relay.
 
@@ -78,7 +84,7 @@ For the laboratory demonstration choose Wallet collection policy, enter `RelayDe
 
 Open X.509 credentials and Manage on `RelayDemoCertificate`. Add `RelayObserver` to the selected owners, review and confirm, then restore only `RelayLab`. Empty owner lists are refused because IRIS treats an empty list as access for all users. Anonymous accounts cannot be added. Relay changes only `OwnerList`; it does not import or rotate a certificate or its key.
 
-In OAuth resource servers, Manage `RelayDemoOAuth`, enable the stored configuration, then restore Disabled. Only `Enabled` changes. This isolated example demonstrates configuration management, not successful token validation or a working connection to a provider.
+In OAuth resource servers, Manage `RelayDemoOAuth`, enable the stored configuration, then restore Disabled. The form also supports description, existing issuer, audiences and required scope; leave those fields unchanged for this availability demonstration. This isolated example demonstrates configuration management, not successful token validation or a working connection to a provider.
 
 ## Read audit summaries
 
@@ -86,23 +92,24 @@ Open Audit log, optionally filter by user and server-local begin/end time, and c
 
 ## Handover workflow
 
-Capture baseline, refresh or make a reviewed change, then select Compare changes. Add context under Handover notes. Export handover produces a readable Markdown file; JSON preserves the structured response. Snapshots and notes stay in the browser tab and are cleared on sign-out. They are not persisted across a browser reload.
+Capture baseline, refresh or make a reviewed change, then select Compare changes. Add context under Handover notes. Export handover produces a readable Markdown file; JSON preserves the structured response. Snapshots and notes stay in the browser tab and are cleared on sign-out. The session activity includes the last 100 accepted changes and their readback status. They are not persisted across a browser reload.
 
-Results are capped at 100 records for list views. The runtime log is capped at the last 64 KiB and 150 complete lines. Filters apply only to the loaded data. These are operational observations, not an exhaustive audit. Free text may contain sensitive information even though credential-like object fields are redacted. Review exports before sharing them.
+Results are capped at 100 records for list views. Each text-log page is capped at 64 KiB and 150 complete lines. Filters apply only to the loaded data. These are operational observations, not an exhaustive audit. Free text may contain sensitive information even though credential-like object fields are redacted. Review exports before sharing them.
 
 ## Validation
 
 ```sh
 npm test
+npm run test:logs
 ```
 
-Thirty-five automated tests cover authentication, origin protection, path allowlisting, secret-field redaction, incompatible versions, IRIS application errors, upstream failures, sign-out, task replay prevention, concurrent state changes, snapshot comparison and Markdown output. Management tests additionally cover selective updates, protected targets, role validation, replay, configuration drift, role definition drift and failed verification. Explorer tests cover required parameters, query encoding, destination/method restrictions and row bounds. Wallet tests cover validated selective updates, public resource refusal and resource drift. Certificate and OAuth tests cover selective updates, owner validation and concurrent configuration changes. Audit tests cover filter bounds, asynchronous states, destination validation, session isolation, error handling and payload minimization.
+Forty-two JavaScript tests cover authentication, origin protection, path allowlisting, secret-field redaction, incompatible versions, IRIS application errors, upstream failures, sign-out, task replay prevention, concurrent state changes, snapshot comparison and Markdown output. Management tests additionally cover selective updates, protected targets, role validation, replay, configuration drift, role definition drift and failed verification. Explorer tests cover required parameters, query encoding, destination/method restrictions and row bounds. Wallet tests cover validated selective updates, public resource refusal and resource drift. Certificate and OAuth tests cover selective updates, owner validation and concurrent configuration changes. Audit tests cover filter bounds, asynchronous states, destination validation, session isolation, error handling and payload minimization.
 
-The current build was additionally checked against a real ARM64 IRIS Community 2026.2 Build 221 container: all fourteen views returned successful responses; suspension and resumption were verified on a disposable task; a `%Operator` account could see tasks and was forbidden from roles and wallet collections. A second clean container was provisioned successfully with scripts/lab.py and validated for API v2 and runtime logs, then stopped. The latest bootstrap also passed on a new third container, including certificate/OAuth/wallet fixtures and runtime logs. Browser testing covered login, task review, confirmed state, filtering, baseline comparison, management forms and completed audit summaries. See [validation evidence](docs/VALIDATION.md) and the [reviewer walkthrough](docs/DEMO.md).
+The current build was additionally checked against a real ARM64 IRIS Community 2026.2 Build 221 container: the original live views returned successful responses; suspension and resumption were verified on a disposable task; a `%Operator` account could see tasks and was forbidden from roles and wallet collections. A second clean container was provisioned successfully with scripts/lab.py and validated for API v2 and runtime logs, then stopped. The latest bootstrap also passed on a new third container, including certificate/OAuth/wallet fixtures and runtime logs. Browser testing covered login, task review, confirmed state, filtering, baseline comparison, management forms and completed audit summaries. See [validation evidence](docs/VALIDATION.md) and the [reviewer walkthrough](docs/DEMO.md).
 
 ## Limitations and next work
 
-This build does not replace the entire Management Portal. Wallet access policies are editable; secret values are not. X.509 editing is limited to credential owners, and OAuth editing to resource server availability. Certificate import/rotation, OAuth discovery and end-to-end provider authentication are not implemented. Application management is limited to availability, and permission management to assigning existing direct roles. Role creation and editing are not implemented. It does not provide every subsystem log, arbitrary API execution, public online demo, package-manager publication or production deployment. See [contest scope](docs/CONTEST.md) for implemented areas and boundaries. Organizer acceptance and bonus points are not implied by technical validation.
+This build does not replace the entire Management Portal. Wallet access policies are editable; secret values are not. X.509 editing is limited to credential owners, and OAuth editing covers resource server status, description, existing issuer, audiences and required scope. Certificate import/rotation, OAuth discovery and end-to-end provider authentication are not implemented. Application management is limited to availability, and permission management includes existing direct user roles and custom role resource policies. Role creation, inherited-role editing and escalation-setting editing are not implemented; existing custom role resource policies are editable. It does not provide every subsystem log, arbitrary API execution, public online demo, package-manager publication or production deployment. See [contest scope](docs/CONTEST.md) for implemented areas and boundaries. Organizer acceptance and bonus points are not implied by technical validation.
 
 ## Sources
 
@@ -114,7 +121,11 @@ This build does not replace the entire Management Portal. Wallet access policies
 
 ## Repeat the local management integration check
 
-With the isolated lab and Relay running on the default ports, run `python3 scripts/verify-management.py`. It temporarily changes the named demonstration application, account roles, wallet policy, certificate owners and OAuth availability, restores them, checks replay and permission denial, and exercises all 25 explorer operations plus an asynchronous audit query. It verifies that Relay targets the laboratory URL before making changes. Generated results stay under ignored `artifacts/`.
+With the isolated lab and Relay running on the default ports, run `python3 scripts/verify-management.py`. It temporarily changes the named demonstration application, account roles, wallet policy, certificate owners and OAuth availability, restores them, checks replay and permission denial, and exercises all 28 explorer operations plus an asynchronous audit query. It verifies that Relay targets the laboratory URL before making changes. Generated results stay under ignored `artifacts/`.
+
+## Check the expanded configuration and log workflows
+
+With the isolated laboratory and Relay running, execute `python3 scripts/verify-enhancements.py`. This exercises and restores `RelayDemoTLS`, the unassigned `RelayDemoRole` and `RelayDemoOAuth`, checks replay and observer denials, and checks available versus absent log sources.
 
 ## License
 

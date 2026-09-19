@@ -1,3 +1,9 @@
+import {
+  configurationKinds,
+  configurationState,
+  previewConfiguration,
+  applyConfiguration,
+} from "./configuration.mjs";
 import { randomBytes } from "node:crypto";
 
 const fail = (status, message) => {
@@ -37,6 +43,8 @@ const protectedUser = (name, session) =>
   ].some((n) => n?.toLowerCase() === name.toLowerCase());
 
 export async function managementState(session, kind, name, upstream) {
+  if (Object.hasOwn(configurationKinds, kind))
+    return configurationState(session, kind, name, upstream);
   if (
     ![
       "webapps",
@@ -211,6 +219,8 @@ async function validateOwners(session, owners, upstream) {
 
 export async function previewManagement(session, input, upstream, server) {
   const { kind, name } = input;
+  if (Object.hasOwn(configurationKinds, kind))
+    return previewConfiguration(session, input, upstream, server);
   if (
     ![
       "webapps",
@@ -271,6 +281,7 @@ export async function previewManagement(session, input, upstream, server) {
 
 export async function applyManagement(session, token, upstream) {
   const plan = session.plans.get(token);
+  if (plan?.configuration) return applyConfiguration(session, token, upstream);
   if (
     !plan ||
     ![

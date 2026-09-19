@@ -1,5 +1,18 @@
 // Deliberate allowlist: the browser cannot provide arbitrary upstream URLs.
 export const resources = {
+  logs: {
+    label: "Log investigation",
+    area: "Logs",
+    virtual: true,
+    privileges: ["Operate"],
+  },
+  tls: {
+    label: "TLS configurations",
+    area: "Security",
+    path: "/v2/security/ssl-configurations",
+    table: true,
+    privileges: ["Secure"],
+  },
   explorer: { label: "REST explorer", area: "Web applications", virtual: true },
   audit: {
     label: "Audit log",

@@ -31,6 +31,20 @@ export const operations = Object.fromEntries(
     ]),
 );
 Object.assign(operations, {
+  tlsDetail: {
+    label: "TLS configuration",
+    path: "/v2/security/ssl-configuration",
+    parameters: { name: text("Configuration name") },
+    description:
+      "Inspect TLS policy and certificate references. Private key fields are redacted.",
+  },
+  roleOwners: {
+    label: "Role impact",
+    path: "/v2/security/role/owners",
+    parameters: { name: text("Role name"), maxRows },
+    description:
+      "Inspect accounts and roles affected by a role policy change, up to 100 results.",
+  },
   webapp: {
     label: "Web application details",
     path: "/v2/web-app",
