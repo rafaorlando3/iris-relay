@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en" data-mode="demo">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>IRIS Relay · Interactive walkthrough</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="./"
+        >◈ <span>IRIS Relay<small>OPERATIONS WORKSPACE</small></span></a
+      >
+      <nav id="nav" aria-label="Management sections"></nav>
+      <div class="sidebar-note">
+        Know what changed.<br />Leave a clear handover.
+      </div>
+    </aside>
+    <main>
+      <header>
+        <span id="connection">LOCAL WORKSPACE</span
+        ><button id="logout" hidden>Sign out</button>
+      </header>
+      <section id="login-panel" hidden>
+        <p class="eyebrow">A CLEARER VIEW OF YOUR INSTANCE</p>
+        <h1>Start your shift<br />with the facts.</h1>
+        <p class="lead">
+          Tasks, access, applications and system activity.<br />One workspace
+          connected directly to InterSystems IRIS.
+        </p>
+        <form id="login">
+          <h2>Connect to IRIS</h2>
+          <label
+            >IRIS username<input
+              name="username"
+              autocomplete="username"
+              required /></label
+          ><label
+            >Password<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required /></label
+          ><button class="primary" type="submit">
+            Open workspace <span>→</span>
+          </button>
+          <p class="muted">
+            Credentials stay in server memory for this session. IRIS permissions
+            remain in control.
+          </p>
+          <p id="login-error" role="alert"></p>
+        </form>
+      </section>
+      <section id="workspace" hidden>
+        <div id="demo-banner" class="demo-banner" hidden>
+          <strong>INTERACTIVE WALKTHROUGH · FICTIONAL DATA</strong>
+          <p>
+            No installation or credentials. Try Scheduled tasks: capture a
+            baseline, resume the sample task, compare changes and export a
+            handover. All actions are simulated in this tab.
+          </p>
+          <a href="https://github.com/rafaorlando3/iris-relay"
+            >Run the real IRIS integration →</a
+          >
+        </div>
+        <div class="title-row">
+          <div>
+            <p class="eyebrow" id="area">OPERATIONS</p>
+            <h1 id="title">System overview</h1>
+            <p id="subtitle" class="muted"></p>
+          </div>
+          <button id="refresh">↻ Refresh</button>
+        </div>
+        <div id="stats" class="stats"></div>
+        <div class="toolbar">
+          <input
+            id="filter"
+            type="search"
+            placeholder="Filter the loaded results…"
+            aria-label="Filter loaded results"
+          /><button id="baseline">Capture baseline</button
+          ><button id="compare" disabled>Compare changes</button
+          ><button id="export" disabled>Export handover</button
+          ><button id="export-json" disabled>JSON</button>
+        </div>
+        <details class="notes">
+          <summary>Handover notes</summary>
+          <label for="notes">Context for the next operator</label
+          ><textarea
+            id="notes"
+            rows="3"
+            maxlength="4000"
+            placeholder="What happened, what you checked, and what still needs attention."
+          ></textarea>
+          <p class="muted">
+            Notes stay in this browser tab and are included in exports.
+          </p>
+        </details>
+        <div id="status" role="status" aria-live="polite"></div>
+        <div id="content" class="panel"></div>
+        <section id="changes" hidden>
+          <h2>Since your baseline</h2>
+          <p id="baseline-info" class="muted"></p>
+          <div id="diff"></div>
+        </section>
+        <details class="notes">
+          <summary>
+            Changes this session (<span id="activity-count">0</span>)
+          </summary>
+          <p class="muted">
+            Last 100 accepted changes and their verification status. Included in
+            handover exports. Cleared on sign-out or reload; not a durable
+            audit.
+          </p>
+          <div id="activity-list"></div>
+        </details>
+        <footer>
+          Live observations from IRIS. Unavailable data is never shown as zero.
+          Exports contain operational metadata; review before sharing.
+        </footer>
+      </section>
+    </main>
+    <dialog id="review" aria-labelledby="review-title">
+      <h2 id="review-title">Review task change</h2>
+      <p id="review-text"></p>
+      <pre id="review-diff"></pre>
+      <p class="muted" id="review-impact">
+        This changes the task schedule on the connected instance. The state is
+        checked again before applying.
+      </p>
+      <div class="toolbar">
+        <button id="cancel-change">Cancel</button
+        ><button class="primary" id="apply-change">Confirm change</button>
+      </div>
+      <p id="review-result" role="status"></p>
+    </dialog>
+    <dialog id="manage" aria-labelledby="manage-title">
+      <div class="title-row">
+        <h2 id="manage-title">Configuration</h2>
+        <button id="close-manage">Close</button>
+      </div>
+      <div id="manage-body"></div>
+    </dialog>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
