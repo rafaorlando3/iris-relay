@@ -15,3 +15,14 @@ Allow about seven minutes after the laboratory has started. Use only the disposa
 The repeatable integration check is `python3 scripts/verify-management.py`; it verifies ten reversible fixture changes, restoration, replay protection, all 25 explorer operations, populated security details and an asynchronous audit query. Automated tests run with `npm test`. See VALIDATION.md for what was actually observed.
 
 This walkthrough is not a production readiness claim. The OAuth example does not establish external authentication. No credential values, real customer data or public administrator account are needed for the demonstration.
+
+
+## 0.2 additions for reviewers
+
+1. **TLS configurations**: manage `RelayDemoTLS`. Change only its description, review the exact fields, apply and confirm matching readback. Restore the original description. Inspect the session history. Protocol controls allow only TLS 1.2/1.3 and do not weaken peer verification.
+2. **Roles**: manage the unassigned `RelayDemoRole`. Inspect holders and add `%Admin_Operate:U` in the resource-permissions field. Review/apply, then restore the empty resource list. Do not assign this demonstration role to a real account.
+3. **OAuth resource servers**: manage `RelayDemoOAuth`. Add `relay-reviewed` on a second audience line, review/apply and restore. It remains disabled and has no attached application. The issuer is a reserved `.invalid` domain: no provider call is made.
+4. **Log investigation**: load `messages.log`, select Older records, filter that page and export. Inspect SystemMonitor.log. Missing sources appear unavailable. A changed file requests a fresh page rather than silently mixing observations.
+5. Export a handover containing the current observation, optional baseline, notes and the last 100 accepted session changes. Verify the before/after/readback status, then sign out to clear browser state.
+
+For a no-installation overview, serve `docs/demo` with a static HTTP server. The explicit fictional walkthrough supports task review, baseline comparison and export. It cannot connect to IRIS and never substitutes sample data for a failed live connection.

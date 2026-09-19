@@ -20,23 +20,21 @@ https://community.intersystems.com/post/technology-bonuses-intersystems-programm
 
 The implemented Docker and Python components align with five published bonus points, not five granted points. There is no approval, prize or income yet.
 
-## Remaining submission gates
+## Publication and review status
 
-1. Obtain organizer confirmation of scope acceptance. Implemented management subsets are listed below; they do not claim to replace the whole Management Portal. Secret value management, certificate import/rotation, full OAuth setup and broader subsystem logs remain outside this build.
-2. Final bootstrap passed on a new container; the management forms and audit table were reviewed in the browser. A concise judge walkthrough is in DEMO.md. Public demo recording remains to be produced.
-3. Publish the reviewed source repository without credentials or laboratory output, then provide its real URL to Open Exchange.
-4. Complete the application fields and submit the reviewed app for approval and contest entry. The current account is active, but no application has been saved or submitted.
-5. Participant eligibility and any prize terms must be confirmed with the organizer separately from technical review.
+The public repository is https://github.com/rafaorlando3/iris-relay. Version 0.1.0 was sent for Open Exchange approval on September 19, 2026, with Submit to Contest selected. This records submission, not organizer acceptance. Version 0.2.0 adds the capabilities documented in RELEASE-0.2.md; publication of that update is recorded separately in the delivery notes.
+
+Remaining useful work: organizer scope review, a public demonstration video and optional package publication. A fictional static walkthrough is included for quick evaluation; it must not be described as a public live administrative service or an awarded online-demo bonus.
 
 ## Implemented scope and boundaries
 
 | Area | Working local capability | Boundary |
 | --- | --- | --- |
 | Operations | System/process/device/resource views; suspend/resume user tasks | No process termination or system-task edits |
-| Logs | Embedded Python runtime tail, journal inventory, asynchronous audit summaries | No journal content parser or every subsystem log |
-| Applications and permissions | Custom app availability; inspect roles; assign existing direct user roles | No role creation or general application/authentication configuration |
+| Logs | Embedded Python runtime/System Monitor/console/alert text paging, journal inventory, asynchronous audit summaries | No journal content parser or every subsystem log |
+| Applications and permissions | Custom app availability; inspect roles; assign existing direct user roles | Custom role resource policies added; no role creation or general application/authentication configuration |
 | Wallet | Collection access policy; names/types of secret inventory | No secret value reads or edits |
-| Certificates and OAuth | Certificate metadata and owner-list changes; OAuth resource server availability | No key import/rotation or live provider authentication |
+| Certificates and OAuth | Certificate metadata and owner-list changes; OAuth resource server issuer/audience/scope/status configuration; TLS policy edits | No key import/rotation or live provider authentication |
 | REST exploration | 25 allowlisted parameterized GET operations with export | No arbitrary destination or write-method console |
 
 The exact categorization and sufficiency are subject to organizer review. Docker and Embedded Python evidence is technical implementation evidence, not awarded points.

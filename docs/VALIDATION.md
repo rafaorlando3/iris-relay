@@ -46,3 +46,15 @@ Not yet established: contest acceptance, production readiness, public demo, full
 * A genuinely new third container, iris-relay-final-check on loopback port 52787, was installed by the final bootstrap. Certificate owner RelayLab, disabled OAuth fixture, wallet collection and runtime log returned successful live reads. The extra container was stopped after validation; the main preview container remains running. This is a fresh-container check on the same ARM64 host, not a different machine or architecture.
 
 Earlier sections record earlier increments; the results above supersede their test counts and inspection-only limitations. No contest acceptance or monetary result has been observed.
+
+## Version 0.2.0, September 19, 2026
+
+* 42 JavaScript tests and 6 Python tests passed. The JavaScript command now targets only `test/*.test.mjs`, so ignored verification clones do not duplicate the reported count.
+* TLS version bounds and description, custom role resource permissions, and OAuth audience/scope/description changes were applied and read back on three named lab fixtures. Six writes including restoration were verified. Each complete configuration matched its starting state. Tokens could not be replayed; the observer account received 403 for each new edit.
+* These new checks plus the existing ten management writes and 28 explorer operations also passed against a fresh fourth container (`iris-relay-v02-check`, loopback 52788), bootstrapped with the updated installer. This is the same ARM64 host, not independent AMD64 validation.
+* The Embedded Python reader returned runtime and System Monitor lines. The absent legacy console and alerts sources returned explicit unavailability. Unit tests verify complete-line paging, append/rotation invalidation, traversal rejection, symbolic-link rejection, long-line and message bounds.
+* Browser validation on the real lab covered TLS description preview, apply, matching readback, restoration and a two-entry session history. Runtime log backward paging was also exercised.
+* The separate static walkthrough completed sample task review, simulated application and baseline comparison. It labels all data fictional and cannot issue IRIS requests. A simulation is never marked as an IRIS-verified write.
+* A local upgrade initially retained an old class definition with LoadDir. The installer now loads each extension class explicitly; clean installation and upgrade were rechecked successfully.
+
+No acceptance, prize, awarded bonus points or income is inferred from these checks.
