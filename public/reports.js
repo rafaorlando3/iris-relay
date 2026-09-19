@@ -90,6 +90,10 @@ export function handoverMarkdown(bundle) {
     );
   lines.push(
     "",
+    "## Session changes (last 100 accepted operations)",
+    "",
+    block(bundle.activity || []),
+    "",
     "## Current observation",
     "",
     block(observation),

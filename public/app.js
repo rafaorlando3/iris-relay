@@ -1,3 +1,8 @@
+import { createDemoAPI } from "./demo.js";
+const demoMode = document.documentElement.dataset.mode === "demo";
+const demoAPI = demoMode ? createDemoAPI() : null;
+import { mountLogs } from "./logs-ui.js";
+import { configurationForm } from "./configuration-ui.js";
 import { mountAudit } from "./audit-ui.js";
 import { mountExplorer } from "./explorer-ui.js";
 import { changesBetween, handoverMarkdown } from "./reports.js";
@@ -7,6 +12,7 @@ let session = null,
   loaded = null,
   baseline = null,
   requestId = 0;
+let activity = [];
 const el = (tag, text, cls) => {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -14,6 +20,7 @@ const el = (tag, text, cls) => {
   return node;
 };
 async function api(path, method = "GET", data) {
+  if (demoAPI) return demoAPI(path, method, data);
   const r = await fetch(path, {
     method,
     headers:
@@ -36,10 +43,31 @@ function connected(data) {
   session = data;
   $("login-panel").hidden = true;
   $("workspace").hidden = false;
-  $("logout").hidden = false;
+  $("logout").hidden = demoMode;
+  if (demoMode) {
+    $("demo-banner").hidden = false;
+    document.querySelector("footer").textContent =
+      "Fictional sample data. All changes stay in this tab. No credentials, API calls or IRIS connection.";
+  }
   $("connection").textContent = data.info.username + " · " + data.server;
   $("nav").replaceChildren();
-  for (const [id, r] of Object.entries(data.resources)) {
+  let lastArea = "";
+  const areaOrder = [
+    "Overview",
+    "Web applications",
+    "Permissions",
+    "Security",
+    "Tasks",
+    "Operations",
+    "Logs",
+  ];
+  for (const [id, r] of Object.entries(data.resources).sort(
+    (a, b) => areaOrder.indexOf(a[1].area) - areaOrder.indexOf(b[1].area),
+  )) {
+    if (r.area !== lastArea) {
+      $("nav").append(el("p", r.area, "nav-group"));
+      lastArea = r.area;
+    }
     const b = el("button", r.label);
     b.dataset.id = id;
     const allowed = r.privileges?.some(
@@ -59,6 +87,9 @@ function connected(data) {
 }
 function disconnected() {
   session = null;
+  activity = [];
+  $("activity-list").replaceChildren();
+  $("activity-count").textContent = "0";
   loaded = null;
   baseline = null;
   requestId++;
@@ -111,23 +142,30 @@ async function load() {
   $("compare").disabled = true;
   $("changes").hidden = true;
   $("status").className = "";
-  $("status").textContent = "Reading live data from IRIS…";
+  $("status").textContent = demoMode
+    ? "Loading fictional sample…"
+    : "Reading live data from IRIS…";
   $("content").replaceChildren(el("p", "Loading…", "empty"));
   $("stats").replaceChildren();
   const r = session.resources[current];
-  $("stats").hidden = ["explorer", "audit"].includes(current);
-  $("filter").hidden = ["explorer", "audit"].includes(current);
-  $("baseline").hidden = ["explorer", "audit"].includes(current);
-  $("compare").hidden = ["explorer", "audit"].includes(current);
+  $("stats").hidden = ["explorer", "audit", "logs"].includes(current);
+  $("filter").hidden = ["explorer", "audit", "logs"].includes(current);
+  $("baseline").hidden = ["explorer", "audit", "logs"].includes(current);
+  $("compare").hidden = ["explorer", "audit", "logs"].includes(current);
   $("area").textContent = r.area.toUpperCase();
   $("title").textContent = r.label;
   $("subtitle").textContent = "";
   $("filter").value = "";
-  for (const b of $("nav").children)
+  for (const b of $("nav").querySelectorAll("button"))
     b.classList.toggle("active", b.dataset.id === current);
   try {
-    if (["explorer", "audit"].includes(current)) {
-      const mount = current === "audit" ? mountAudit : mountExplorer;
+    if (["explorer", "audit", "logs"].includes(current)) {
+      const mount =
+        current === "logs"
+          ? mountLogs
+          : current === "audit"
+            ? mountAudit
+            : mountExplorer;
       await mount(
         $("content"),
         api,
@@ -150,7 +188,7 @@ async function load() {
     if (id !== requestId) return;
     loaded = result;
     $("status").textContent =
-      "Observed " +
+      (demoMode ? "Fictional sample loaded " : "Observed ") +
       new Date(result.observedAt).toLocaleString() +
       (result.limit
         ? " · Up to " +
@@ -212,7 +250,7 @@ function render() {
           [
             "UPTIME",
             loaded.data.Status?.UpTime ?? "Unavailable",
-            "Reported by IRIS",
+            demoMode ? "Fictional sample" : "Reported by IRIS",
           ],
           [
             "SERIOUS ALERTS",
@@ -232,14 +270,16 @@ function render() {
             all.length,
             loaded.limit
               ? "Response capped at " + loaded.limit + " rows"
-              : "Returned by IRIS",
+              : demoMode
+                ? "Fictional sample"
+                : "Returned by IRIS",
           ],
           [
             "IN THIS VIEW",
             filtered.length,
             q ? "Matching your local filter" : "No filter applied",
           ],
-          ["CONNECTION", "Live", session.info.username],
+          ["CONNECTION", demoMode ? "Demo" : "Live", session.info.username],
         ];
   for (const [label, value, note] of metrics) {
     const box = el("div", undefined, "stat");
@@ -274,6 +314,7 @@ function render() {
       "collections",
       "certificates",
       "oauthResources",
+      "tls",
     ].includes(current)
   )
     h.append(el("th", "Inspect / manage", "actions-cell"));
@@ -305,12 +346,15 @@ function render() {
         "collections",
         "certificates",
         "oauthResources",
+        "tls",
       ].includes(current)
     ) {
       const td = el("td"),
-        button = el("button", current === "roles" ? "Inspect role" : "Manage");
+        button = el("button", "Manage");
       td.className = "actions-cell";
-      const kind = current;
+      const kind =
+        { roles: "rolePolicy", oauthResources: "oauthSettings" }[current] ||
+        current;
       button.addEventListener("click", () =>
         openManagement(kind, row.Name ?? row.Alias),
       );
@@ -374,12 +418,18 @@ $("compare").addEventListener("click", () => {
 function exportHandover(format) {
   if (!loaded) return;
   const bundle = {
-    application: "IRIS Relay",
+    application: demoMode ? "IRIS Relay offline demonstration" : "IRIS Relay",
+    demo: demoMode,
     exportedAt: new Date().toISOString(),
     serverVersion: session.info.serverVersion,
     resource: current,
     notes: $("notes").value,
-    note: "Operational metadata, not a complete audit. Review before sharing. Secret-like fields are redacted; free text can still contain sensitive data.",
+    activity: activity,
+    note:
+      (demoMode
+        ? "FICTIONAL DEMONSTRATION. No live operation occurred. "
+        : "") +
+      "Operational metadata, not a complete audit. Review before sharing. Secret-like fields are redacted; free text can still contain sensitive data.",
     observation: loaded,
     baseline: baseline?.resource === current ? baseline : undefined,
   };
@@ -422,8 +472,9 @@ async function previewTask(row) {
     pendingChange.endpoint = "/api/tasks/apply";
     $("review-title").textContent = "Review task change";
     $("review-diff").textContent = "";
-    $("review-impact").textContent =
-      "This changes the task schedule on the connected instance. The state is checked again before applying.";
+    $("review-impact").textContent = demoMode
+      ? "Simulation only. This changes fictional data in this tab, without sending an IRIS request."
+      : "This changes the task schedule on the connected instance. The state is checked again before applying.";
     $("review-text").textContent =
       (pendingChange.action === "suspend" ? "Suspend" : "Resume") +
       " " +
@@ -449,11 +500,38 @@ $("apply-change").addEventListener("click", async () => {
     const r = await api(pendingChange.endpoint, "POST", {
       token: pendingChange.token,
     });
+    activity.push({
+      name: pendingChange.name,
+      kind: pendingChange.kind || "tasks",
+      before: pendingChange.before,
+      desired: pendingChange.desired,
+      ...r,
+    });
+    if (activity.length > 100) activity.shift();
+    $("activity-list").replaceChildren(
+      ...activity
+        .slice()
+        .reverse()
+        .map((a) => {
+          const row = el("details");
+          row.append(
+            el(
+              "summary",
+              `${a.simulated ? "Simulated" : a.verified ? "Verified" : "Accepted, not verified"} · ${a.name} · ${new Date(a.observedAt).toLocaleTimeString()}`,
+            ),
+            el("pre", JSON.stringify(a, null, 2)),
+          );
+          return row;
+        }),
+    );
+    $("activity-count").textContent = String(activity.length);
     pendingChange = null;
     $("cancel-change").textContent = "Close";
-    $("review-result").textContent = r.verified
-      ? "Applied and verified in IRIS."
-      : "Accepted by IRIS; verification unavailable. Refresh before another change.";
+    $("review-result").textContent = r.simulated
+      ? "Sample updated in this tab only. No IRIS request was made."
+      : r.verified
+        ? "Applied and verified in IRIS."
+        : "Accepted by IRIS; verification unavailable. Refresh before another change.";
     await load();
   } catch (e) {
     pendingChange = null;
@@ -521,7 +599,9 @@ async function openManagement(kind, name) {
       error = el("p", "", "error");
     error.setAttribute("role", "alert");
     let desiredInput;
-    if (["webapps", "oauthResources"].includes(kind)) {
+    if (["tls", "rolePolicy", "oauthSettings"].includes(kind)) {
+      desiredInput = configurationForm(form, state);
+    } else if (["webapps", "oauthResources"].includes(kind)) {
       const label = el(
           "label",
           kind === "oauthResources"
@@ -688,7 +768,8 @@ async function openManagement(kind, name) {
           2,
         );
         $("review-impact").textContent =
-          kind === "certificates"
+          plan.impact ||
+          (kind === "certificates"
             ? "This changes who may use the certificate credential. The owner list and users are checked again before applying."
             : kind === "oauthResources"
               ? "This changes the availability of the stored OAuth resource server configuration. No discovery, login or token request is performed."
@@ -696,7 +777,7 @@ async function openManagement(kind, name) {
                 ? "Confirm who can use or edit this collection. The resource definitions and policy are checked again before applying. Secret values are not displayed or changed."
                 : kind === "users"
                   ? "Confirm this user's new access. IRIS permissions are enforced, configuration is rechecked, and the result is read back after applying."
-                  : "This changes application availability. Configuration is rechecked before applying, then the result is read back from IRIS.";
+                  : "This changes application availability. Configuration is rechecked before applying, then the result is read back from IRIS.");
         $("review-result").textContent = "";
         $("cancel-change").textContent = "Cancel";
         $("apply-change").disabled = false;

@@ -567,3 +567,36 @@ td.message-cell {
 .stats[hidden] {
   display: none;
 }
+
+.nav-group {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  margin: 18px 12px 6px;
+}
+aside {
+  overflow-y: auto;
+}
+.demo-banner {
+  border: 1px solid #c4a348;
+  background: #fff8db;
+  padding: 18px 24px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  color: #584314;
+}
+.demo-banner p {
+  margin: 10px 0;
+}
+.demo-banner a {
+  color: #254f45;
+}
+#activity-list {
+  display: grid;
+  gap: 12px;
+}
+#content .explorer table td:last-child {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

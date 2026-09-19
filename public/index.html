@@ -4,11 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>IRIS Relay · Operations workspace</title>
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <aside>
-      <a class="brand" href="/"
+      <a class="brand" href="./"
         >◈ <span>IRIS Relay<small>OPERATIONS WORKSPACE</small></span></a
       >
       <nav id="nav" aria-label="Management sections"></nav>
@@ -52,6 +52,17 @@
         </form>
       </section>
       <section id="workspace" hidden>
+        <div id="demo-banner" class="demo-banner" hidden>
+          <strong>INTERACTIVE WALKTHROUGH · FICTIONAL DATA</strong>
+          <p>
+            No installation or credentials. Try Scheduled tasks: capture a
+            baseline, resume the sample task, compare changes and export a
+            handover. All actions are simulated in this tab.
+          </p>
+          <a href="https://github.com/rafaorlando3/iris-relay"
+            >Run the real IRIS integration →</a
+          >
+        </div>
         <div class="title-row">
           <div>
             <p class="eyebrow" id="area">OPERATIONS</p>
@@ -92,6 +103,17 @@
           <p id="baseline-info" class="muted"></p>
           <div id="diff"></div>
         </section>
+        <details class="notes">
+          <summary>
+            Changes this session (<span id="activity-count">0</span>)
+          </summary>
+          <p class="muted">
+            Last 100 accepted changes and their verification status. Included in
+            handover exports. Cleared on sign-out or reload; not a durable
+            audit.
+          </p>
+          <div id="activity-list"></div>
+        </details>
         <footer>
           Live observations from IRIS. Unavailable data is never shown as zero.
           Exports contain operational metadata; review before sharing.
@@ -119,6 +141,6 @@
       </div>
       <div id="manage-body"></div>
     </dialog>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
