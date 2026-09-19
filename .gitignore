@@ -1,0 +1,12 @@
+.env
+private.json
+node_modules/
+artifacts/
+*.log
+__pycache__/
+*.pyc
+
+.DS_Store
+.env.*
+*.pem
+*.key
