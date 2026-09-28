@@ -627,3 +627,13 @@ aside {
   margin-top: 0;
   padding: 11px 16px;
 }
+
+.demo-banner.compact {
+  padding: 12px 14px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+.demo-banner.compact button {
+  margin-top: 4px;
+  padding: 9px;
+}

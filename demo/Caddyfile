@@ -1,0 +1,9 @@
+# Automatic HTTPS for the public demo host, forwarding to Relay on the loopback.
+{$DEMO_HOST} {
+	encode gzip
+	reverse_proxy 127.0.0.1:8787
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}

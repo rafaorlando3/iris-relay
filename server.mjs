@@ -27,10 +27,36 @@ const files = {
   "/style.css": ["style.css", "text/css"],
 };
 
+// Public demo: only the shared demo account may sign in, and only the disposable
+// Relay demonstration objects created by scripts/bootstrap.py can be changed.
+export const DEMO_TARGETS = {
+  webapps: ["/relay-demo"],
+  users: ["RelayDemoUser"],
+  collections: ["RelayDemo"],
+  certificates: ["RelayDemoCertificate"],
+  oauthResources: ["RelayDemoOAuth"],
+  oauthSettings: ["RelayDemoOAuth"],
+  tls: ["RelayDemoTLS"],
+  rolePolicy: ["RelayDemoRole"],
+};
+export const DEMO_TASK = "Relay demonstration task";
+const MAX_SESSIONS = 500;
+
+// RELAY_PUBLIC_ORIGIN: the https origin a reverse proxy serves Relay on (demo hosting).
+export function publicOrigin(value) {
+  if (!value) return null;
+  const u = new URL(value);
+  if (u.protocol !== "https:" || u.pathname !== "/" || u.search || u.hash || u.username || u.password)
+    throw new Error("RELAY_PUBLIC_ORIGIN must be an https origin such as https://relay-demo.example.");
+  return u.origin;
+}
+
 export function createApp({
   irisUrl = "http://127.0.0.1:52785",
   origin = "http://127.0.0.1:8787",
   fetcher = fetch,
+  demo = null,
+  trustProxy = false,
 } = {}) {
   const target = new URL(irisUrl);
   if (
@@ -51,6 +77,16 @@ export function createApp({
     throw new Error("Remote IRIS connections require HTTPS.");
   const sessions = new Map();
   const failures = new Map();
+  // Behind a reverse proxy every request comes from 127.0.0.1; use the address
+  // the proxy appended last (the one it saw), never a client-supplied first entry.
+  const clientKey = (req) =>
+    (trustProxy &&
+      req.headers["x-forwarded-for"]?.split(",").at(-1).trim()) ||
+    req.socket.remoteAddress;
+  const demoRefusal = (kind, name) =>
+    demo && !(DEMO_TARGETS[kind] || []).includes(name)
+      ? "In the public demo only the Relay demonstration objects can be changed."
+      : null;
   const cleanup = setInterval(() => {
     const now = Date.now();
     for (const [id, s] of sessions) if (s.expires < now) sessions.delete(id);
@@ -186,6 +222,19 @@ export function createApp({
       }
       if (!url.pathname.startsWith("/api/"))
         return reply(res, 404, { error: "Not found." });
+      if (url.pathname === "/api/config" && req.method === "GET")
+        return reply(
+          res,
+          200,
+          demo
+            ? {
+                demo: true,
+                username: demo.username,
+                password: demo.password,
+                resetMinutes: demo.resetMinutes,
+              }
+            : { demo: false },
+        );
       if (
         req.method !== "GET" &&
         (!req.headers["content-type"]?.startsWith("application/json") ||
@@ -201,7 +250,7 @@ export function createApp({
         ?.slice(14);
       const session = sessions.get(sid);
       if (url.pathname === "/api/login" && req.method === "POST") {
-        const key = req.socket.remoteAddress;
+        const key = clientKey(req);
         const throttle = failures.get(key);
         if (throttle?.until > Date.now() && throttle.count >= 5)
           return reply(res, 429, {
@@ -217,6 +266,10 @@ export function createApp({
         )
           return reply(res, 400, {
             error: "Enter your IRIS username and password.",
+          });
+        if (demo && credentials.username !== demo.username)
+          return reply(res, 403, {
+            error: `This public demo only accepts the shared account ${demo.username}.`,
           });
         const info = await upstream(credentials, "/info");
         if (!info.ok) {
@@ -239,6 +292,9 @@ export function createApp({
         if (sid) sessions.delete(sid);
         const id = randomBytes(32).toString("hex");
         const csrf = randomBytes(24).toString("hex");
+        // Bound memory: drop the oldest sessions first (Map keeps insertion order).
+        while (sessions.size >= MAX_SESSIONS)
+          sessions.delete(sessions.keys().next().value);
         sessions.set(id, {
           credentials: {
             username: credentials.username,
@@ -413,17 +469,16 @@ export function createApp({
           );
         return reply(res, 200, visible);
       }
-      if (url.pathname === "/api/manage/preview" && req.method === "POST")
+      if (url.pathname === "/api/manage/preview" && req.method === "POST") {
+        const input = await body(req);
+        const refusal = demoRefusal(input?.kind, input?.name);
+        if (refusal) return reply(res, 403, { error: refusal });
         return reply(
           res,
           200,
-          await previewManagement(
-            session,
-            await body(req),
-            upstream,
-            target.origin,
-          ),
+          await previewManagement(session, input, upstream, target.origin),
         );
+      }
       if (url.pathname === "/api/manage/apply" && req.method === "POST")
         return reply(
           res,
@@ -450,6 +505,11 @@ export function createApp({
           return reply(res, 403, {
             error:
               "Relay only changes user-defined tasks. System tasks are protected.",
+          });
+        if (demo && task.Name !== DEMO_TASK)
+          return reply(res, 403, {
+            error:
+              "In the public demo only the Relay demonstration objects can be changed.",
           });
         const detail = await upstream(
           session.credentials,
@@ -608,7 +668,7 @@ if (
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const port = Number(process.env.PORT || 8787),
-    origin = `http://127.0.0.1:${port}`,
+    origin = publicOrigin(process.env.RELAY_PUBLIC_ORIGIN) || `http://127.0.0.1:${port}`,
     // Loopback by default. The compose file sets 0.0.0.0 inside the container,
     // where Docker publishes the port only on the host's 127.0.0.1.
     host = process.env.RELAY_LISTEN_HOST || "127.0.0.1";
@@ -616,7 +676,24 @@ if (
     console.error("RELAY_LISTEN_HOST must be 127.0.0.1 or 0.0.0.0.");
     process.exit(1);
   }
-  createApp({ irisUrl: process.env.IRIS_URL, origin }).listen(port, host, () =>
-    console.log(`IRIS Relay: ${origin}`),
+  const demo =
+    process.env.RELAY_DEMO === "1"
+      ? {
+          username: process.env.RELAY_DEMO_USER || "RelayDemoOperator",
+          password: process.env.RELAY_DEMO_PASSWORD,
+          resetMinutes: Number(process.env.RELAY_DEMO_RESET_MINUTES || 60),
+        }
+      : null;
+  if (demo && !demo.password) {
+    console.error("RELAY_DEMO=1 needs RELAY_DEMO_PASSWORD (the shared demo password shown on the sign-in page).");
+    process.exit(1);
+  }
+  createApp({
+    irisUrl: process.env.IRIS_URL,
+    origin,
+    demo,
+    trustProxy: process.env.RELAY_TRUST_PROXY === "1",
+  }).listen(port, host, () =>
+    console.log(`IRIS Relay: ${origin}${demo ? " (public demo mode)" : ""}`),
   );
 }

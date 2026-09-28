@@ -13,6 +13,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -33,10 +34,17 @@ def run(*cmd, **kw):
     return subprocess.run(cmd, text=True, capture_output=True, check=True, timeout=120, **kw)
 
 
-def session(script, namespace='%SYS'):
+def session(script, namespace='%SYS', secrets=()):
     out = run('iris', 'session', 'IRIS', '-U', namespace, input=script + '\nhalt\n').stdout
     if 'ERROR #' in out or '<' in out or 'RELAY_READY' not in out:
-        raise RuntimeError('IRIS setup did not confirm completion. Credentials were not printed.')
+        # Show the IRIS reason (first error lines), never the credentials in the script.
+        reason = [line.strip() for line in out.splitlines()
+                  if 'RELAY_STEP_FAILED' in line or 'ERROR #' in line or '<' in line][:3]
+        text = ' | '.join(reason) or 'no confirmation from IRIS'
+        for secret in secrets:
+            text = text.replace(secret, '[redacted]')
+        first = next((l.strip() for l in script.splitlines() if l.strip()), '')[:60]
+        raise RuntimeError('IRIS setup step failed (' + first.split('(')[0] + '...): ' + text[:400])
 
 
 def wait_running(seconds=120):
@@ -93,7 +101,24 @@ def lab_accounts(creds):
     session('''if '##class(Security.Users).Exists("RelayLab") { set sc=##class(Security.Users).Create("RelayLab","%%All","%s") if $SYSTEM.Status.IsError(sc) { halt } }
 if '##class(Security.Users).Exists("RelayObserver") { set sc=##class(Security.Users).Create("RelayObserver","%%Operator","%s") if $SYSTEM.Status.IsError(sc) { halt } }
 write "RELAY_READY",!
-''' % (creds['password'], creds['observerPassword']))
+''' % (creds['password'], creds['observerPassword']), secrets=[creds['password'], creds['observerPassword']])
+
+
+DEMO_ROLES = '%Manager'
+
+
+def demo_account(username, password):
+    """Shared account for a hosted public demo: no %All; Relay (RELAY_DEMO=1) limits changes to the Relay fixtures."""
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9]{2,31}', username or ''):
+        raise RuntimeError('Invalid demo username.')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{12,64}', password or ''):
+        raise RuntimeError('The demo password must be 12 to 64 letters, digits, _ or -.')
+    # The terminal runs each line on its own, so if/else must stay on one line.
+    session('''if '##class(Security.Users).Exists("%(u)s") { set sc=##class(Security.Users).Create("%(u)s","%(r)s","%(p)s","Shared public demo account") } else { set props("Password")="%(p)s",props("Roles")="%(r)s",props("Enabled")=1 set sc=##class(Security.Users).Modify("%(u)s",.props) }
+if $SYSTEM.Status.IsError(sc) { write "RELAY_STEP_FAILED demo account: ",$SYSTEM.Status.GetErrorText(sc),! halt }
+set st=##class(%%SQL.Statement).%%ExecDirect(,"GRANT SELECT, INSERT, DELETE ON Relay.LogLine TO %(u)s") if st.%%SQLCODE<0 { write "RELAY_STEP_FAILED demo grant: SQLCODE ",st.%%SQLCODE," ",st.%%Message,! halt }
+write "RELAY_READY",!
+''' % {'u': username, 'p': password, 'r': DEMO_ROLES}, secrets=[password])
 
 
 def fixtures(src, creds):
@@ -101,11 +126,12 @@ def fixtures(src, creds):
 if $SYSTEM.Status.IsError(sc) { halt }
 write "RELAY_READY",!
 ''' % src, 'USER')
+    demo_user_password = secrets.token_urlsafe(30)  # never kept; the fixture user stays disabled
     session('''set props("NameSpace")="USER",props("DispatchClass")="Relay.DemoApi",props("AutheEnabled")=32,props("Enabled")=0,props("Resource")="%%Admin_Operate",props("Description")="Disposable Relay demonstration application"
 if '##class(Security.Applications).Exists("/relay-demo") { set sc=##class(Security.Applications).Create("/relay-demo",.props) if $SYSTEM.Status.IsError(sc) { halt } }
 if '##class(Security.Users).Exists("RelayDemoUser") { set sc=##class(Security.Users).Create("RelayDemoUser","","%s") if $SYSTEM.Status.IsError(sc) { halt } kill props set props("Enabled")=0,props("FullName")="Disposable Relay demonstration account" set sc=##class(Security.Users).Modify("RelayDemoUser",.props) if $SYSTEM.Status.IsError(sc) { halt } }
 write "RELAY_READY",!
-''' % secrets.token_urlsafe(30))
+''' % demo_user_password, secrets=[demo_user_password])
     session('''set sc=$SYSTEM.OBJ.Load("%s/fixtures/Relay/SmokeTask.cls","ck")
 if $SYSTEM.Status.IsError(sc) { halt }
 if '$Data(^RelayLabFixture) { set t=##class(%%SYS.Task).%%New(),t.Name="Relay demonstration task",t.TaskClass="Relay.SmokeTask",t.NameSpace="USER",t.RunAsUser="RelayLab",t.TimePeriod=0,t.TimePeriodEvery=1,t.DailyStartTime=86399,t.StartDate=$Piece($Horolog,",",1)+1 set sc=t.%%Save() if $SYSTEM.Status.IsError(sc) { halt } set ^RelayLabFixture=t.%%Id() }
@@ -136,6 +162,8 @@ def main():
     source.add_argument('--credentials-file', help='use this file, or create it (0600) with new credentials')
     parser.add_argument('--public-url', default='http://127.0.0.1:52785', help='URL recorded in a newly created credentials file')
     parser.add_argument('--ready-file', help='write this marker after a successful setup (compose health check)')
+    parser.add_argument('--demo-account', action='store_true',
+                        help='also create the shared public-demo account from RELAY_DEMO_USER / RELAY_DEMO_PASSWORD')
     args = parser.parse_args()
     src = Path(args.src).resolve()
     wait_running()
@@ -143,6 +171,8 @@ def main():
     lab_accounts(creds)
     install_extension(src)
     fixtures(src, creds)
+    if args.demo_account:
+        demo_account(os.environ.get('RELAY_DEMO_USER', 'RelayDemoOperator'), os.environ.get('RELAY_DEMO_PASSWORD'))
     if args.ready_file:
         Path(args.ready_file).write_text(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + '\n')
     print('IRIS Relay bootstrap complete.')

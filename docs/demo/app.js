@@ -460,6 +460,30 @@ api("/api/session")
   .then(connected)
   .catch(() => {});
 
+// Public demo hosting: the server says whether it runs in demo mode and which
+// shared account to use. The static walkthrough (demoMode) has no such endpoint.
+if (!demoMode)
+  fetch("/api/config")
+    .then((r) => (r.ok ? r.json() : { demo: false }))
+    .then((config) => {
+      if (!config.demo) return;
+      const every = config.resetMinutes
+        ? `It is reset to a clean lab every ${config.resetMinutes} minutes.`
+        : "";
+      $("public-demo-text").textContent =
+        `Sign in as ${config.username} with password ${config.password}. This is a disposable IRIS 2026.2 lab shared by everyone. ${every} Only the Relay demonstration objects can be changed.`;
+      $("public-demo-note").textContent =
+        `Changes are real in this disposable IRIS lab and visible to other visitors. Only objects named Relay… (the demo task, /relay-demo, RelayDemoUser, RelayDemoRole, RelayDemo wallet, RelayDemoCertificate, RelayDemoOAuth, RelayDemoTLS) can be changed. ${every}`;
+      $("public-demo-login").hidden = false;
+      $("public-demo").hidden = false;
+      $("public-demo-fill").addEventListener("click", () => {
+        const form = $("login");
+        form.elements.username.value = config.username;
+        form.elements.password.value = config.password;
+      });
+    })
+    .catch(() => {});
+
 let pendingChange = null;
 async function previewTask(row) {
   $("cancel-change").textContent = "Cancel";

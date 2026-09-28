@@ -346,3 +346,87 @@ test("log similarity search validates input, forwards IDs only, and index refres
   assert.equal((await indexed.json()).totalLines, 3);
   assert.equal(seen.filter((s) => s === "POST /api/relay/log-index").length, 1);
 });
+
+async function demoSetup(t, fetcher, extra = {}) {
+  const port = nextPort++,
+    url = "http://127.0.0.1:" + port;
+  const server = createApp({
+    origin: url,
+    fetcher,
+    demo: { username: "RelayDemoOperator", password: "public-demo", resetMinutes: 60 },
+    ...extra,
+  });
+  await new Promise((r) => server.listen(port, "127.0.0.1", r));
+  t.after(() => new Promise((r) => server.close(r)));
+  const login = (username = "RelayDemoOperator", headers = {}) =>
+    fetch(url + "/api/login", {
+      method: "POST",
+      headers: { Origin: url, "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ username, password: "public-demo" }),
+    });
+  return { url, login };
+}
+
+test("public demo: config is public, only the demo account signs in, only demo objects change", async (t) => {
+  const calls = [];
+  const { url, login } = await demoSetup(t, async (u, options) => {
+    calls.push((options.method || "GET") + " " + u.pathname + u.search);
+    if (u.pathname.endsWith("/v2/tasks"))
+      return ok([
+        { Id: 1000, Name: "Relay demonstration task", Type: "User", Suspended: false },
+        { Id: 1001, Name: "Someone else's task", Type: "User", Suspended: false },
+      ]);
+    return ok({ apiVersion: 2 });
+  });
+  const config = await (await fetch(url + "/api/config")).json();
+  assert.deepEqual(config, { demo: true, username: "RelayDemoOperator", password: "public-demo", resetMinutes: 60 });
+  const before = calls.length;
+  assert.equal((await login("RelayLab")).status, 403);
+  assert.equal(calls.length, before, "a non-demo account must not reach IRIS");
+  const l = await login();
+  assert.equal(l.status, 200);
+  const cookie = l.headers.get("set-cookie").split(";")[0],
+    { csrf } = await l.json();
+  const post = (path, data) =>
+    fetch(url + path, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: url, "Content-Type": "application/json", "X-Relay-CSRF": csrf },
+      body: JSON.stringify(data),
+    });
+  const quiet = calls.length;
+  for (const [kind, name] of [
+    ["users", "_SYSTEM"], ["users", "RelayDemoOperator"], ["webapps", "/csp/sys"],
+    ["tls", "%SuperServer"], ["rolePolicy", "%Developer"], ["collections", "Other"],
+    ["certificates", "Other"], ["oauthResources", "Other"], ["oauthSettings", "Other"], ["unknown", "x"],
+  ]) {
+    const r = await post("/api/manage/preview", { kind, name, enabled: true });
+    assert.equal(r.status, 403, kind + " " + name);
+    assert.match((await r.json()).error, /demonstration objects/);
+  }
+  assert.equal(calls.length, quiet, "refused demo targets must not reach IRIS");
+  const other = await post("/api/tasks/preview", { taskId: 1001, action: "suspend" });
+  assert.equal(other.status, 403);
+  assert.ok(!calls.some((c) => c.includes("task/info?id=1001")));
+});
+
+test("sessions are bounded and proxy-forwarded addresses get their own sign-in throttle", async (t) => {
+  let unauthorized = true;
+  const { url, login } = await demoSetup(
+    t,
+    async (u) => (unauthorized && u.pathname.endsWith("/info") ? new Response("", { status: 401 }) : ok({ apiVersion: 2 })),
+    { trustProxy: true },
+  );
+  for (let i = 0; i < 5; i++)
+    assert.equal((await login("RelayDemoOperator", { "X-Forwarded-For": "203.0.113.7" })).status, 401);
+  assert.equal((await login("RelayDemoOperator", { "X-Forwarded-For": "203.0.113.7" })).status, 429);
+  unauthorized = false;
+  // A different visitor behind the same proxy is not locked out; a spoofed first entry does not help the first one.
+  assert.equal((await login("RelayDemoOperator", { "X-Forwarded-For": "198.51.100.9" })).status, 200);
+  assert.equal((await login("RelayDemoOperator", { "X-Forwarded-For": "198.51.100.9, 203.0.113.7" })).status, 429);
+  const cookies = [];
+  for (let i = 0; i < 502; i++)
+    cookies.push((await login("RelayDemoOperator", { "X-Forwarded-For": "192.0.2." + (i % 250) })).headers.get("set-cookie").split(";")[0]);
+  const status = async (c) => (await fetch(url + "/api/session", { headers: { Cookie: c } })).status;
+  assert.equal(await status(cookies[0]), 401, "oldest session evicted");
+  assert.equal(await status(cookies.at(-1)), 200);
+});

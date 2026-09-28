@@ -26,4 +26,4 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 | Article | Developer Community article (link in README once published) |
 | First contribution | First Open Exchange contest for the author |
 
-Not provided yet: hosted live demo (the GitHub Pages walkthrough is static and fictional). Not provided: Embedded Python bug report.
+Online demo: ready to host with `scripts/demo-install.sh` ([DEMO-HOSTING.md](DEMO-HOSTING.md)); the address is added to the README once it is running. The GitHub Pages walkthrough is static and fictional. Not provided: Embedded Python bug report.

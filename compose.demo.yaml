@@ -1,0 +1,37 @@
+# Public demo overlay. Used by scripts/demo-install.sh on a dedicated, disposable server:
+#   docker compose -f compose.yaml -f compose.demo.yaml up -d
+# Needs a .env file next to it with DEMO_HOST and RELAY_DEMO_PASSWORD (created by the installer).
+# IRIS stays unpublished; Relay stays on 127.0.0.1:8787; only Caddy (80/443) is public.
+services:
+  iris:
+    command:
+      - --before
+      - rm -f /usr/irissys/mgr/relay/.bootstrap-ok
+      - --after
+      - python3 /opt/relay/scripts/bootstrap.py --src /opt/relay --credentials-file /usr/irissys/mgr/relay/lab-credentials.json --public-url http://127.0.0.1:52773 --ready-file /usr/irissys/mgr/relay/.bootstrap-ok --demo-account
+    environment:
+      RELAY_DEMO_USER: RelayDemoOperator
+      RELAY_DEMO_PASSWORD: ${RELAY_DEMO_PASSWORD:?set RELAY_DEMO_PASSWORD in .env}
+    restart: unless-stopped
+
+  relay:
+    environment:
+      RELAY_DEMO: "1"
+      RELAY_DEMO_USER: RelayDemoOperator
+      RELAY_DEMO_PASSWORD: ${RELAY_DEMO_PASSWORD:?set RELAY_DEMO_PASSWORD in .env}
+      RELAY_DEMO_RESET_MINUTES: "60"
+      RELAY_PUBLIC_ORIGIN: https://${DEMO_HOST:?set DEMO_HOST in .env}
+      RELAY_TRUST_PROXY: "1"
+
+  caddy:
+    image: caddy:2
+    network_mode: host
+    environment:
+      DEMO_HOST: ${DEMO_HOST:?set DEMO_HOST in .env}
+    volumes:
+      - ./demo/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
