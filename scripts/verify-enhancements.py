@@ -38,7 +38,8 @@ for source in sources['sources']:
   report.append({'log':source['name'],'records':len(p['data']),'state':'available'})
  else:
   assert code==409,p;report.append({'log':source['name'],'state':'unavailable','status':code})
-for path in ['/api/logs/page?source=../../private','/api/logs/page?cursor=bad!']:
+report.append({'archivedRotations':sum(1 for s in sources['sources'] if s.get('archived')),'archivedOmitted':sources.get('archivedOmitted')})
+for path in ['/api/logs/page?source=../../private','/api/logs/page?cursor=bad!','/api/logs/page?source=runtime.old_..%2Firis.cpf','/api/logs/page?source=alerts.old_1']:
  code,_=api(path);assert code==400
 code,login=api('/api/login','POST',{'username':'RelayObserver','password':c['observerPassword']});assert code==200;csrf=login['csrf']
 for kind,name in [('tls','RelayDemoTLS'),('rolePolicy','RelayDemoRole'),('oauthSettings','RelayDemoOAuth')]:

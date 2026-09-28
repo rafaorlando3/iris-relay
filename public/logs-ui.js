@@ -11,15 +11,30 @@ export async function mountLogs(container, api, onResult, active) {
   const label = el("label", "Log source"),
     select = el("select");
   select.setAttribute("aria-label", "Log source");
+  const size = (bytes) =>
+    bytes >= 1048576
+      ? (bytes / 1048576).toFixed(1) + " MiB"
+      : bytes >= 1024
+        ? Math.round(bytes / 1024) + " KiB"
+        : bytes + " bytes";
+  const current = document.createElement("optgroup"),
+    archived = document.createElement("optgroup");
+  current.label = "Current logs and numbered rotations";
+  archived.label = "Archived rotations (messages.old_*)";
   for (const source of sources.sources) {
     const option = el(
       "option",
-      `${source.name} · ${source.available ? source.bytes + " bytes" : source.status}`,
+      source.archived
+        ? `${source.name} · ${size(source.bytes)} · last written ${new Date(source.modified).toLocaleString()}`
+        : `${source.name} · ${source.available ? size(source.bytes) : source.status}`,
     );
     option.value = source.id;
     option.disabled = !source.available;
-    select.append(option);
+    (source.archived ? archived : current).append(option);
   }
+  select.append(current);
+  if (archived.children.length) select.append(archived);
+  const archivedCount = archived.children.length;
   const first = sources.sources.find((s) => s.available);
   if (first) select.value = first.id;
   label.append(select);
@@ -41,7 +56,7 @@ export async function mountLogs(container, api, onResult, active) {
     tools,
     el(
       "p",
-      "Fixed IRIS text sources and up to three numbered rotations. Each page contains at most 64 KiB / 150 lines. Audit, task history and journal inventory have their own sections.",
+      `Fixed IRIS text sources, up to three numbered rotations and ${archivedCount ? archivedCount + " archived messages.old_* rotation" + (archivedCount === 1 ? "" : "s") : "no archived messages.old_* rotations"} found in the manager directory${sources.archivedOmitted ? ` (${sources.archivedOmitted} older not listed; newest ${sources.archiveLimit} shown)` : ""}. Each page contains at most 64 KiB / 150 lines. Audit, task history and journal inventory have their own sections.`,
     ),
     status,
     results,

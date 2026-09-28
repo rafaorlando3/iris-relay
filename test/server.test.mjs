@@ -265,3 +265,44 @@ test("preview cannot overwrite a task changed by another operator", async (t) =>
   );
   assert.equal(writes, 0);
 });
+
+test("archived log IDs are forwarded as IDs; paths and other names are refused", async (t) => {
+  const seen = [];
+  const { url, login } = await setup(t, async (u) => {
+    if (u.pathname.startsWith("/api/relay/")) {
+      seen.push(u.pathname + u.search);
+      return new Response(
+        JSON.stringify({
+          source: "messages.old_20260928_1",
+          observedAt: "2026-09-28T15:40:00Z",
+          rows: [{ Message: "archived line" }],
+          nextCursor: null,
+        }),
+        { status: 200 },
+      );
+    }
+    return ok({ apiVersion: 2 });
+  });
+  const l = await login(),
+    cookie = l.headers.get("set-cookie").split(";")[0];
+  const get = (q) =>
+    fetch(url + "/api/logs/page?" + q, { headers: { Cookie: cookie } });
+  const good = await get("source=runtime.old_20260928_1");
+  assert.equal(good.status, 200);
+  assert.equal((await good.json()).data[0].Message, "archived line");
+  assert.match(seen.at(-1), /source=runtime\.old_20260928_1/);
+  const before = seen.length;
+  for (const bad of [
+    "runtime.old_../x",
+    "runtime.old_a%2Fb",
+    "runtime.old_",
+    "alerts.old_20260928",
+    "messages.old_20260928",
+    "runtime.old_" + "a".repeat(49),
+    "runtime.old_a.gz",
+  ]) {
+    const r = await get("source=" + bad);
+    assert.equal(r.status, 400, bad);
+  }
+  assert.equal(seen.length, before);
+});

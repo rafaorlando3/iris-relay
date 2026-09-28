@@ -13,13 +13,51 @@ SOURCES = {'runtime': 'messages.log', 'console': 'cconsole.log', 'system-monitor
 def error(message):
     return {'error': message}
 
+# Archived rotations use IRIS names such as messages.old_20260928. The suffix
+# alphabet excludes separators and dots, so an ID can never leave the directory.
+ARCHIVE_SOURCES = {'runtime': 'messages', 'console': 'cconsole'}
+ARCHIVE_NAME = re.compile(r'(messages|cconsole)\.old_([0-9A-Za-z_-]{1,48})')
+ARCHIVE_ID = re.compile(r'(runtime|console)\.old_([0-9A-Za-z_-]{1,48})')
+ARCHIVE_LIMIT = 24
+
 def path_for(directory, source):
     # IDs, not browser supplied paths. Rotations are deliberately bounded.
+    archived = ARCHIVE_ID.fullmatch(source)
+    if archived:
+        name = ARCHIVE_SOURCES[archived[1]] + '.old_' + archived[2]
+        return os.path.join(directory, name), name
     m = re.fullmatch(r'(runtime|console|system-monitor|alerts)(?:\.([1-3]))?', source)
     if not m:
         raise ValueError('Choose a listed log source.')
     name = SOURCES[m[1]] + ('.' + m[2] if m[2] else '')
     return os.path.join(directory, name), name
+
+def archived(directory):
+    """Regular messages.old_* / cconsole.old_* files, newest first, bounded."""
+    found = []
+    try:
+        entries = list(os.scandir(directory))
+    except OSError:
+        return [], 0, 'Unavailable'
+    prefix = {v: k for k, v in ARCHIVE_SOURCES.items()}
+    for entry in entries:
+        m = ARCHIVE_NAME.fullmatch(entry.name)
+        if not m:
+            continue
+        try:
+            info = os.lstat(os.path.join(directory, entry.name))
+        except OSError:
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            continue  # symbolic links and special files are never offered
+        found.append({'id': prefix[m[1]] + '.old_' + m[2], 'name': entry.name, 'available': True,
+                      'bytes': info.st_size, 'status': 'Archived rotation', 'archived': True,
+                      'modified': datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(),
+                      '_order': (info.st_mtime_ns, entry.name)})
+    found.sort(key=lambda r: r['_order'], reverse=True)
+    for row in found:
+        del row['_order']
+    return found[:ARCHIVE_LIMIT], max(0, len(found) - ARCHIVE_LIMIT), None
 
 def catalog(directory):
     rows = []
@@ -38,7 +76,12 @@ def catalog(directory):
                     rows.append({'id': key, 'name': name, 'available': False, 'bytes': None, 'status': 'Not present in this instance'})
             except OSError:
                 rows.append({'id': key, 'name': name, 'available': False, 'bytes': None, 'status': 'Unavailable'})
-    return {'sources': rows, 'byteLimit': BYTE_LIMIT, 'lineLimit': LINE_LIMIT}
+    old, omitted, problem = archived(directory)
+    result = {'sources': rows + old, 'byteLimit': BYTE_LIMIT, 'lineLimit': LINE_LIMIT,
+              'archiveLimit': ARCHIVE_LIMIT, 'archivedOmitted': omitted}
+    if problem:
+        result['archiveStatus'] = problem
+    return result
 
 def page(directory, source='runtime', cursor=''):
     try:

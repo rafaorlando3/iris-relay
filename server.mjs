@@ -289,7 +289,10 @@ export function createApp({
         const source = url.searchParams.get("source") || "runtime",
           cursor = url.searchParams.get("cursor") || "";
         if (
-          !/^(runtime|console|system-monitor|alerts)(\.[1-3])?$/.test(source) ||
+          !(
+            /^(runtime|console|system-monitor|alerts)(\.[1-3])?$/.test(source) ||
+            /^(runtime|console)\.old_[0-9A-Za-z_-]{1,48}$/.test(source)
+          ) ||
           cursor.length > 1024 ||
           !/^[A-Za-z0-9_=-]*$/.test(cursor)
         )
