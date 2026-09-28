@@ -429,6 +429,7 @@ table {
 }
 td {
   min-width: 95px;
+  max-width: none;
   white-space: nowrap;
   overflow-wrap: normal;
 }

@@ -1,35 +1,104 @@
 # IRIS Relay
 
-An operations workspace for InterSystems IRIS 2026.2. Inspect live management data, compare snapshots, review task and access changes, and leave a useful handover for the next operator.
+An operations workspace for InterSystems IRIS 2026.2. Investigate an instance, make a management change safely, and leave a clear handover for the next operator.
 
-This is an experimental operations tool with a disposable demonstration lab. It does not replace the entire Management Portal; see the scope and validation notes below.
+IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS extension (ObjectScript REST class and an Embedded Python log reader). Every change is reviewed first, re-checked right before it is applied, applied once, and then read back from IRIS. A baseline comparison and a Markdown/JSON export show what changed during the shift.
 
-## New in 0.2
+![IRIS Relay: a reviewed task change, applied and verified in IRIS](docs/images/review-verified.png)
 
-TLS policy editing, custom role resource permissions, OAuth issuer/audience/scope configuration, backward text-log paging and session change evidence in handovers. See [release details](docs/RELEASE-0.2.md) and [log coverage](docs/LOGS.md).
+* **Video demo (2:38):** VIDEO_LINK_PENDING
+* **Open Exchange:** https://openexchange.intersystems.com/package/IRIS-Relay
+* **No-install walkthrough (fictional data, no IRIS):** https://rafaorlando3.github.io/iris-relay/
+* **Community Opportunity idea implemented:** [DPI-I-966, "Option to show older message.log in IRIS SMP"](https://ideas.intersystems.com/ideas/DPI-I-966)
 
-An interactive fictional walkthrough is included under `docs/demo`. Run `python3 -m http.server 8790 --bind 127.0.0.1 --directory docs/demo` and open http://127.0.0.1:8790. It makes no IRIS requests and asks for no credentials. Use the laboratory below to evaluate the real integration.
+## Why
 
-## What works
+IRIS Relay was built for the people who operate IRIS: to investigate problems, make changes safely and leave a clear shift handover. It brings diagnosis, state comparison and the history of changes into one flow, so less time goes into collecting information during an incident.
 
-* Sixteen live data views, an asynchronous audit log query, and a REST explorer with 28 curated GET operations: system overview, system resources, processes, devices, scheduled tasks, task history, runtime log, journal files, web applications, roles, users, wallet collections, X.509 credentials, OAuth server definitions, and OAuth resource servers.
-* Baseline comparison by record identity. A missing row is reported as absent from the response, never assumed deleted.
-* Task suspension and resumption with an expiring review step, a fresh state check, a single-use confirmation token, and verification against IRIS after the change. Only user-defined tasks can be changed.
-* Enable or disable a custom web application, inspect role definitions, edit custom role resource policies, and replace direct role assignments on an ordinary user. Every edit has a before/after preview, fresh configuration check and verified readback.
-* Wallet collection access policy editing with resource validation, public-resource rejection, a before/after preview and verified readback. Secret inventory exposes names and types only.
-* X.509 credential owner-list editing and OAuth resource server availability changes, each with preview, concurrency checks and verified readback. Certificate keys are not changed. The resource-server editor additionally supports existing HTTPS issuer, accepted audiences and required scope; this does not prove a working provider login.
-* Bounded asynchronous audit queries with explicit queued/running/finished states, session isolation and summary-only results.
-* Markdown and JSON handover exports with timestamps, limits, before/after evidence, and optional operator notes.
-* Runtime log reading implemented in Embedded Python inside IRIS. It reads fixed runtime, console, System Monitor and alert text sources with bounded backward paging, not arbitrary browser-supplied files. See [coverage](docs/LOGS.md).
-* Permission hints from IRIS, explicit forbidden/unavailable states, and backend enforcement by the real IRIS account.
+Our biggest lesson was not to trust the API response alone. On IRIS 2026.2 the task list still reported the old `Suspended` value right after a successful change, while the task detail endpoint reported the new one. Since then Relay checks the state before and after every change, and only reports "verified" when IRIS confirms it.
 
-## Requirements
+## Quick start (about 5 minutes)
 
-Node.js 22 or newer, Python 3, Docker Desktop/Engine, and an IRIS Community 2026.2 image. No npm runtime packages or paid service are required.
+Requirements: Docker, Node.js 22 or newer and Python 3. No npm packages and no paid service.
 
-The initially tested `intersystemsdc/iris-community:latest` resolved to 2026.1 and did not expose the required `/api/admin/v2` endpoints. The laboratory pins the official 2026.2 multi-platform image index instead. The index advertises Linux AMD64 and ARM64 images; live validation was performed on ARM64 only. Docker selects the matching image for its host.
+```sh
+git clone https://github.com/rafaorlando3/iris-relay.git
+cd iris-relay
+python3 scripts/lab.py      # disposable IRIS Community 2026.2 container with demo fixtures
+npm start                   # IRIS Relay on http://127.0.0.1:8787
+```
 
-## Start an isolated laboratory
+Open http://127.0.0.1:8787 and sign in with the `username` and `password` from `artifacts/lab-credentials.json` (created by the lab script; keep it private). The `RelayObserver` user (`observerPassword`) has only the `%Operator` role, so you can also see how IRIS limits a restricted account.
+
+Stop everything with Ctrl+C and `docker stop iris-relay-2026-2`.
+
+Suggested 5-minute tour: Scheduled tasks → Capture baseline → Suspend `Relay demonstration task` → Confirm → Compare changes → Resume it. Then open Log investigation and pick an archived `messages.old_*` file (run `python3 scripts/lab-rotate-log.py` first to create one). Finish with Export handover. The full reviewer script is in [docs/DEMO.md](docs/DEMO.md).
+
+## What you can do
+
+| Contest area | In IRIS Relay |
+| --- | --- |
+| Manage web apps and explore REST APIs | Enable or disable custom web applications with review and readback. REST explorer with 28 allowlisted, read-only SysAdmin API operations, HTTP status, timing and export. |
+| Permission management | Inspect roles and their holders, edit custom role resource permissions, replace a user's direct roles. Built-in accounts, `%All` holders and escalation roles are protected. |
+| Security and secrets | Wallet collection access policies (secret values are never read), X.509 credential owner lists, OAuth resource servers (issuer, audiences, scope, status), TLS configurations (TLS 1.2/1.3 bounds, peer verification cannot be weakened). |
+| Task management | Scheduled tasks and task history. Suspend or resume user tasks with state verified through the detail endpoint. System tasks are protected. |
+| Operating system | System overview, resources, processes, devices and journal files. |
+| Log monitoring and reporting | Embedded Python reader for `messages.log`, System Monitor and alert logs, **including archived `messages.old_*` files (new in 0.3)**, with backward paging and search. Background audit queries. Markdown/JSON handover exports. |
+
+## How a change works
+
+1. **Review.** You see the target instance and the exact before/after values. A review token expires and can be used once.
+2. **Re-check.** Right before applying, Relay reads the configuration again. If someone else changed it, the change is refused.
+3. **Apply once.** Only the fields you changed are sent. A replayed confirmation returns HTTP 409.
+4. **Read back.** Relay reads the result from IRIS and reports "Applied and verified in IRIS" only when it matches. Otherwise it says the change was accepted but not verified.
+5. **Hand over.** The last 100 accepted changes, with their verification result, go into the handover export together with your notes and the baseline comparison.
+
+IRIS remains responsible for authorization: Relay signs in with the operator's own IRIS account and never elevates privileges.
+
+## New in 0.3: archived messages.log files (DPI-I-966)
+
+![Log investigation reading an archived messages.old_* file](docs/images/archived-logs.png)
+
+When `messages.log` grows beyond `MaxConsoleLogSize`, IRIS renames it (for example `messages.old_20260928`, then `messages.old_20260928_1`) and the Management Portal log view shows only the current file (the gap described in idea DPI-I-966). Relay lists the archived files with size and last-write time, newest first, and reads them with the same paging and search as the current log. The browser sends a validated ID, never a path; links and special files are refused. Details in [docs/LOGS.md](docs/LOGS.md).
+
+To try it, run `python3 scripts/lab-rotate-log.py` with the lab running. It produces a real rotation in the lab container and then restores the original setting.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  B[Browser] -->|same-origin, CSRF token| R["IRIS Relay<br/>Node.js 22, loopback"]
+  R -->|Basic auth as the operator| A["/api/admin/v2<br/>SysAdmin API"]
+  R -->|Basic auth as the operator| X["/api/relay<br/>Relay.Api + Relay.LogReader"]
+  X --> P["log_reader.py<br/>Embedded Python"]
+  A --> I[("InterSystems IRIS 2026.2")]
+  P --> I
+```
+
+* No runtime npm dependencies. The server keeps credentials in memory for the session only and binds to 127.0.0.1 by default.
+* Responses are capped (100 rows, 64 KiB log pages) and credential-like fields are redacted before they reach the browser.
+* The extension (`src/Relay`) is installed by `scripts/lab.py`; see "Connect to an existing test instance" below to install it elsewhere.
+
+## Technology used
+
+Docker (pinned official IRIS Community 2026.2 image), Embedded Python (log reader running inside IRIS), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. There is no IPM package, vector search or hosted live demo; the GitHub Pages walkthrough is a static page with fictional data.
+
+## Validation
+
+```sh
+npm test            # 43 JavaScript tests
+npm run test:logs   # 9 Python tests for the log reader
+```
+
+With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). See [docs/VALIDATION.md](docs/VALIDATION.md).
+
+## Limitations
+
+This is an experimental tool for authorized administrators, not a replacement for the whole Management Portal and not a production readiness claim. It does not edit secret values, import or rotate keys, create roles, test a full OAuth provider flow, terminate processes, parse journal contents or read every subsystem log. Session history is not a durable audit. Search applies to the loaded log page.
+
+## Detailed guide
+
+### Start an isolated laboratory
 
 Start Docker, then from this directory run:
 
@@ -50,7 +119,7 @@ Stop the application with Ctrl+C and stop the laboratory with:
 docker stop iris-relay-2026-2
 ```
 
-## Connect to an existing test instance
+### Connect to an existing test instance
 
 ```sh
 IRIS_URL=https://your-test-instance.example PORT=8787 npm start
@@ -60,13 +129,13 @@ The URL is an operator-configured origin, not an arbitrary browser-provided prox
 
 The optional runtime log extension consists of `src/Relay/Api.cls`, `src/Relay/LogReader.cls` and `src/Relay/log_reader.py`. Copy the Python file to `<IRIS manager directory>/relay/log_reader.py` and load both classes into `%SYS`. The local setup installs it in `%SYS` as `/api/relay`, with password authentication and a `%Admin_Operate:U` check. Without the extension the runtime log view reports unavailable; the standard management views still work.
 
-## Review a task change
+### Review a task change
 
 Choose Scheduled tasks, capture a baseline, and choose Suspend or Resume on a **user-defined** task. Review the task and connected instance, then confirm. Relay checks the state again and verifies the result through `/v2/task/info`. No system task can be changed through Relay. No process termination, data deletion or credential rotation is offered in this build.
 
 The 2026.2 laboratory returned an outdated `Suspended` value from `/v2/tasks` immediately after a successful change. Relay reads user-task state from the detail endpoint before display, preview and confirmation. An accepted HTTP response alone is not treated as verified completion.
 
-## Review applications and permissions
+### Review applications and permissions
 
 In Web applications, select Manage on `/relay-demo`, change the status and select Review change. Confirm only after checking the target instance and before/after values. Only `Enabled` is sent to IRIS. Restore the disabled status after the demonstration. System applications, applications in `%SYS` and Relay's own connection are protected.
 
@@ -74,58 +143,39 @@ In Users, open `RelayDemoUser`. Choose an existing role such as `%Operator`, rev
 
 The current signed-in account, recognized built-in accounts and direct `%All` holders are protected. Direct `%All` and `%Manager` grants and escalation-only grants are not supported. Other roles may still confer powerful or inherited access: this is a tool for authorized administrators, not a role sandbox. IRIS enforces `%Admin_Secure`. Changes to the target configuration or the selected role definitions invalidate the preview. These checks are optimistic, not an atomic IRIS transaction.
 
-## Explore the API and wallet access
+### Explore the API and wallet access
 
 REST explorer provides 28 documented, allowlisted GET operations with validated parameters. It shows HTTP status, elapsed request time, observed timestamp and the IRIS response. List requests are capped at 100 rows. Export the result as Markdown or JSON for handover. It cannot send arbitrary URLs, headers or write methods. Responses are direct API observations; for example, the task-list endpoint may still have the version-specific state lag described above.
 
 For the laboratory demonstration choose Wallet collection policy, enter `RelayDemo`, and run the request. Then open Wallet collections and Manage. Change UseResource to `%Admin_Operate:USE`, review and confirm, and restore `%Admin_Wallet:USE` after the demonstration. The collection is empty: no real secret changes hands. Both resource names are checked against IRIS and any public permission on either resource blocks the change. The administrator needs the IRIS permissions to inspect security resources as well as manage the wallet. Secret values are not read, stored or edited by Relay.
 
-## Review certificate access and OAuth availability
+### Review certificate access and OAuth availability
 
 Open X.509 credentials and Manage on `RelayDemoCertificate`. Add `RelayObserver` to the selected owners, review and confirm, then restore only `RelayLab`. Empty owner lists are refused because IRIS treats an empty list as access for all users. Anonymous accounts cannot be added. Relay changes only `OwnerList`; it does not import or rotate a certificate or its key.
 
 In OAuth resource servers, Manage `RelayDemoOAuth`, enable the stored configuration, then restore Disabled. The form also supports description, existing issuer, audiences and required scope; leave those fields unchanged for this availability demonstration. This isolated example demonstrates configuration management, not successful token validation or a working connection to a provider.
 
-## Read audit summaries
+### Read audit summaries
 
 Open Audit log, optionally filter by user and server-local begin/end time, and choose a maximum of 100 records. IRIS creates a background query. Relay briefly polls, then offers Check query status if it is still unfinished. Pending results are never presented as an empty completed log. Completed rows show event, timestamp, user, description and namespace, and can be exported. Detailed event payloads, session identifiers and network fields are excluded. Free-text summaries still require review before sharing.
 
-## Handover workflow
+### Handover workflow
 
 Capture baseline, refresh or make a reviewed change, then select Compare changes. Add context under Handover notes. Export handover produces a readable Markdown file; JSON preserves the structured response. Snapshots and notes stay in the browser tab and are cleared on sign-out. The session activity includes the last 100 accepted changes and their readback status. They are not persisted across a browser reload.
 
 Results are capped at 100 records for list views. Each text-log page is capped at 64 KiB and 150 complete lines. Filters apply only to the loaded data. These are operational observations, not an exhaustive audit. Free text may contain sensitive information even though credential-like object fields are redacted. Review exports before sharing them.
 
-## Validation
-
-```sh
-npm test
-npm run test:logs
-```
-
-Forty-two JavaScript tests cover authentication, origin protection, path allowlisting, secret-field redaction, incompatible versions, IRIS application errors, upstream failures, sign-out, task replay prevention, concurrent state changes, snapshot comparison and Markdown output. Management tests additionally cover selective updates, protected targets, role validation, replay, configuration drift, role definition drift and failed verification. Explorer tests cover required parameters, query encoding, destination/method restrictions and row bounds. Wallet tests cover validated selective updates, public resource refusal and resource drift. Certificate and OAuth tests cover selective updates, owner validation and concurrent configuration changes. Audit tests cover filter bounds, asynchronous states, destination validation, session isolation, error handling and payload minimization.
-
-The current build was additionally checked against a real ARM64 IRIS Community 2026.2 Build 221 container: the original live views returned successful responses; suspension and resumption were verified on a disposable task; a `%Operator` account could see tasks and was forbidden from roles and wallet collections. A second clean container was provisioned successfully with scripts/lab.py and validated for API v2 and runtime logs, then stopped. The latest bootstrap also passed on a new third container, including certificate/OAuth/wallet fixtures and runtime logs. Browser testing covered login, task review, confirmed state, filtering, baseline comparison, management forms and completed audit summaries. See [validation evidence](docs/VALIDATION.md) and the [reviewer walkthrough](docs/DEMO.md).
-
-## Limitations and next work
-
-This build does not replace the entire Management Portal. Wallet access policies are editable; secret values are not. X.509 editing is limited to credential owners, and OAuth editing covers resource server status, description, existing issuer, audiences and required scope. Certificate import/rotation, OAuth discovery and end-to-end provider authentication are not implemented. Application management is limited to availability, and permission management includes existing direct user roles and custom role resource policies. Role creation, inherited-role editing and escalation-setting editing are not implemented; existing custom role resource policies are editable. It does not provide every subsystem log, arbitrary API execution, public online demo, package-manager publication or production deployment. See [contest scope](docs/CONTEST.md) for implemented areas and boundaries. Organizer acceptance and bonus points are not implied by technical validation.
-
-## Sources
-
-[Contest announcement](https://community.intersystems.com/post/intersystems-programming-contest-build-your-own-management-portal)
-
-[Official SysAdmin API specification](https://github.com/intersystems-community/sysadmin-api-specification)
-
-[Technology bonus rules](https://community.intersystems.com/post/technology-bonuses-intersystems-programming-contest-build-your-own-management-portal)
-
-## Repeat the local management integration check
+### Repeat the local management integration check
 
 With the isolated lab and Relay running on the default ports, run `python3 scripts/verify-management.py`. It temporarily changes the named demonstration application, account roles, wallet policy, certificate owners and OAuth availability, restores them, checks replay and permission denial, and exercises all 28 explorer operations plus an asynchronous audit query. It verifies that Relay targets the laboratory URL before making changes. Generated results stay under ignored `artifacts/`.
 
-## Check the expanded configuration and log workflows
+### Check the expanded configuration and log workflows
 
 With the isolated laboratory and Relay running, execute `python3 scripts/verify-enhancements.py`. This exercises and restores `RelayDemoTLS`, the unassigned `RelayDemoRole` and `RelayDemoOAuth`, checks replay and observer denials, and checks available versus absent log sources.
+
+## Sources
+
+[Contest announcement](https://community.intersystems.com/post/intersystems-programming-contest-build-your-own-management-portal) · [SysAdmin API specification](https://github.com/intersystems-community/sysadmin-api-specification) · [Technology bonuses](https://community.intersystems.com/post/technology-bonuses-intersystems-programming-contest-build-your-own-management-portal) · [Idea DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966)
 
 ## License
 

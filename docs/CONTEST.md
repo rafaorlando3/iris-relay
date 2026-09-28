@@ -1,40 +1,27 @@
-# Contest readiness, 2026-09-19
+# Contest notes
 
-Target: Build Your Own Management Portal, deadline September 27, 2026 at 23:59 EST as published by the organizer.
+Entry for the [InterSystems Programming Contest: Build Your Own Management Portal](https://community.intersystems.com/post/intersystems-programming-contest-build-your-own-management-portal). Voting runs from September 28 to October 4, 2026; the application may be improved during voting.
 
-Official bonus announcement:
-https://community.intersystems.com/post/technology-bonuses-intersystems-programming-contest-build-your-own-management-portal
+## Contest task areas
 
-| Bonus | Published points | Evidence here | Status |
-| --- | ---: | --- | --- |
-| Docker | 2 | Pinned IRIS Community 2026.2 container, loopback binding, lab setup | Implemented locally; organizer award pending |
-| Embedded Python | 3 | Relay.LogReader reads and parses the bounded runtime log inside IRIS | Implemented and exercised; organizer award pending |
-| First contribution | 3 | No eligibility claim made | Personal eligibility not independently confirmed; do not claim awarded |
-| Demonstration video | 3 per video, max 3 videos | No recording or public video | One concise useful demo is preferable to padding |
-| Online demo | 2 | Local app only | Not earned; do not expose an administrator account to obtain it |
-| ZPM deployment | 2 | No published package | Not earned |
-| Community Opportunity idea | 4 | No qualifying idea selected | Not earned |
-| Vector search | 2 in list, 5 in paragraph | No vector search | Conflicting wording; not selected because it adds no clear value here |
-| Embedded Python bug | 2 for first reproducible bug, max 3 | No confirmed Embedded Python bug | Task list behavior is NOT an Embedded Python bug; do not claim this bonus |
-| Articles | 2 then 1 | No article | No automatic publication; editorial rules differ from coding rules |
-
-The implemented Docker and Python components align with five published bonus points, not five granted points. There is no approval, prize or income yet.
-
-## Publication and review status
-
-The public repository is https://github.com/rafaorlando3/iris-relay. Version 0.1.0 was sent for Open Exchange approval on September 19, 2026, with Submit to Contest selected. This records submission, not organizer acceptance. Version 0.2.0 adds the capabilities documented in RELEASE-0.2.md; publication of that update is recorded separately in the delivery notes.
-
-Remaining useful work: organizer scope review, a public demonstration video and optional package publication. A fictional static walkthrough is included for quick evaluation; it must not be described as a public live administrative service or an awarded online-demo bonus.
-
-## Implemented scope and boundaries
-
-| Area | Working local capability | Boundary |
+| Area | Implemented | Boundary |
 | --- | --- | --- |
-| Operations | System/process/device/resource views; suspend/resume user tasks | No process termination or system-task edits |
-| Logs | Embedded Python runtime/System Monitor/console/alert text paging, journal inventory, asynchronous audit summaries | No journal content parser or every subsystem log |
-| Applications and permissions | Custom app availability; inspect roles; assign existing direct user roles | Custom role resource policies added; no role creation or general application/authentication configuration |
-| Wallet | Collection access policy; names/types of secret inventory | No secret value reads or edits |
-| Certificates and OAuth | Certificate metadata and owner-list changes; OAuth resource server issuer/audience/scope/status configuration; TLS policy edits | No key import/rotation or live provider authentication |
-| REST exploration | 25 allowlisted parameterized GET operations with export | No arbitrary destination or write-method console |
+| Manage web apps and explore REST APIs | Custom web application availability with review and readback; REST explorer with 28 allowlisted GET operations and export | No arbitrary URLs or write methods in the explorer; application editing is limited to availability |
+| Permission management | Role inspection with holders, custom role resource permissions, direct user role assignment | No role creation, inherited-role or escalation editing |
+| Security and secrets | Wallet collection access policy and secret inventory (names and types), X.509 owner lists, OAuth resource servers, TLS configurations | No secret value reads or edits, no key import or rotation, no end-to-end OAuth provider test |
+| Task management | Tasks, task history, suspend/resume of user tasks verified through task/info | System tasks are protected |
+| Operating system | System overview, resources, processes, devices, journal files | No process termination |
+| Log monitoring and reporting | Embedded Python reader for current and archived text logs, audit summaries, Markdown/JSON handover | No journal content decoding or every subsystem log |
 
-The exact categorization and sufficiency are subject to organizer review. Docker and Embedded Python evidence is technical implementation evidence, not awarded points.
+## Technology bonuses (self-assessment; the organizers decide)
+
+| Bonus | What the repository provides |
+| --- | --- |
+| Docker | `scripts/lab.py` runs the pinned official IRIS Community 2026.2 container |
+| Embedded Python | `Relay.LogReader` runs `src/Relay/log_reader.py` inside IRIS |
+| Community Opportunity idea | [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966), archived `messages.old_*` logs, in 0.3.0 ([details](LOGS.md)) |
+| YouTube video | Demo recorded on the real lab (link in README once published) |
+| Article | Developer Community article (link in README once published) |
+| First contribution | First Open Exchange contest for the author |
+
+Not provided: IPM package, vector search, hosted live demo (the GitHub Pages walkthrough is static and fictional), Embedded Python bug report.

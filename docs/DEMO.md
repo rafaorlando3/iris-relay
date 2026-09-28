@@ -26,3 +26,10 @@ This walkthrough is not a production readiness claim. The OAuth example does not
 5. Export a handover containing the current observation, optional baseline, notes and the last 100 accepted session changes. Verify the before/after/readback status, then sign out to clear browser state.
 
 For a no-installation overview, serve `docs/demo` with a static HTTP server. The explicit fictional walkthrough supports task review, baseline comparison and export. It cannot connect to IRIS and never substitutes sample data for a failed live connection.
+
+## 0.3 addition for reviewers
+
+1. With the lab and Relay running, execute `python3 scripts/lab-rotate-log.py` (about one minute). It creates a real `messages.old_*` rotation and restores the original `MaxConsoleLogSize`.
+2. Open **Log investigation**. The selector has a second group, "Archived rotations (messages.old_*)", newest first with size and last-write time.
+3. Choose one, select **Older records** to page backwards, and search the loaded page (for example `grown beyond`, the line IRIS writes when it rotates the log).
+

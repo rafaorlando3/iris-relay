@@ -58,3 +58,13 @@ Earlier sections record earlier increments; the results above supersede their te
 * A local upgrade initially retained an old class definition with LoadDir. The installer now loads each extension class explicitly; clean installation and upgrade were rechecked successfully.
 
 No acceptance, prize, awarded bonus points or income is inferred from these checks.
+
+## Version 0.3.0, September 28, 2026
+
+* First run on x86-64: a new lab container from the pinned official image (IRIS for UNIX, Ubuntu Server LTS for x86-64 Containers, 2026.2 Build 221U) was created by `scripts/lab.py` on a Linux x86-64 host. `npm test` (42 tests at the start of the day) and `npm run test:logs` passed; `verify-management.py` and `verify-enhancements.py` passed with all fixtures restored.
+* Archived rotations: with `MaxConsoleLogSize` lowered to 1 MB, IRIS renamed the log to `messages.old_20260928` about a minute after the limit was exceeded, then `messages.old_20260928_1`, `_2` and `_3` for later rotations the same day. Relay listed them newest first with sizes, read `messages.old_20260928` (150 lines, older data available), paged backwards, and rejected `runtime.old_../iris.cpf` with HTTP 400 without contacting IRIS. The `%Operator` observer could list the same sources, consistent with the existing `%Admin_Operate:U` check. `scripts/lab-rotate-log.py` produced a rotation and restored the original value (5 MB), verified in `iris.cpf`.
+* After the change: 43 JavaScript tests and 9 Python tests pass. `verify-enhancements.py` reads every source, including archived rotations, and checks the new invalid IDs.
+* The demo video was recorded against this lab. The task, user role and every other fixture changed on camera were restored and read back afterwards (task 1000 not suspended; RelayDemoUser disabled with no roles).
+
+No acceptance, prize, awarded bonus points or income is inferred from these checks.
+
