@@ -17,22 +17,33 @@ IRIS Relay was built for the people who operate IRIS: to investigate problems, m
 
 Our biggest lesson was not to trust the API response alone. On IRIS 2026.2 the task list still reported the old `Suspended` value right after a successful change, while the task detail endpoint reported the new one. Since then Relay checks the state before and after every change, and only reports "verified" when IRIS confirms it.
 
-## Quick start (about 5 minutes)
+## Quick start: one command (about 2 minutes)
 
-Requirements: Docker, Node.js 22 or newer and Python 3. No npm packages and no paid service.
+Requirements: Docker with Compose. Nothing else is installed on your machine.
 
 ```sh
 git clone https://github.com/rafaorlando3/iris-relay.git
 cd iris-relay
-python3 scripts/lab.py      # disposable IRIS Community 2026.2 container with demo fixtures
+docker compose up -d
+docker compose exec iris cat /usr/irissys/mgr/relay/lab-credentials.json
+```
+
+Open http://127.0.0.1:8787 (use `127.0.0.1`, not `localhost`) and sign in with `username` and `password` from that file. `RelayObserver` with `observerPassword` has only the `%Operator` role, so you can also see how IRIS limits a restricted account.
+
+Compose starts the pinned IRIS Community 2026.2 container, runs `scripts/bootstrap.py` inside it (Relay extension, lab accounts with generated passwords kept inside the container, disposable demo fixtures) and starts Relay once IRIS reports ready. Only port 8787 is published, on 127.0.0.1; IRIS itself is not published. Stop with `docker compose down` (the next `up` creates a fresh lab with new passwords).
+
+## Alternative: lab script and local Node
+
+Requirements: Docker, Node.js 22 or newer and Python 3. No npm packages and no paid service. Use this path for the repeatable live checks and the log rotation helper.
+
+```sh
+python3 scripts/lab.py      # disposable IRIS container, credentials in artifacts/lab-credentials.json
 npm start                   # IRIS Relay on http://127.0.0.1:8787
 ```
 
-Open http://127.0.0.1:8787 and sign in with the `username` and `password` from `artifacts/lab-credentials.json` (created by the lab script; keep it private). The `RelayObserver` user (`observerPassword`) has only the `%Operator` role, so you can also see how IRIS limits a restricted account.
+Both paths run the same `scripts/bootstrap.py` inside the container. Stop with Ctrl+C and `docker stop iris-relay-2026-2`.
 
-Stop everything with Ctrl+C and `docker stop iris-relay-2026-2`.
-
-Suggested 5-minute tour: Scheduled tasks → Capture baseline → Suspend `Relay demonstration task` → Confirm → Compare changes → Resume it. Then open Log investigation and pick an archived `messages.old_*` file (run `python3 scripts/lab-rotate-log.py` first to create one). Finish with Export handover. The full reviewer script is in [docs/DEMO.md](docs/DEMO.md).
+Suggested 5-minute tour: Scheduled tasks → Capture baseline → Suspend `Relay demonstration task` → Confirm → Compare changes → Resume it. Then open Log investigation and pick an archived `messages.old_*` file (with the lab script, run `python3 scripts/lab-rotate-log.py` first to create one). Finish with Export handover. The full reviewer script is in [docs/DEMO.md](docs/DEMO.md).
 
 ## What you can do
 

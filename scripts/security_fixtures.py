@@ -1,4 +1,6 @@
-"""Provision disposable local security examples, without contacting any OAuth provider."""
+"""Provision disposable local security examples, without contacting any OAuth provider.
+
+Runs inside the IRIS container (called by scripts/bootstrap.py)."""
 import base64
 import json
 import subprocess
@@ -6,7 +8,7 @@ import urllib.request
 import urllib.error
 
 
-def provision(name, url, credentials):
+def provision(url, credentials):
     headers = {
         'Authorization': 'Basic ' + base64.b64encode((credentials['username'] + ':' + credentials['password']).encode()).decode(),
         'Content-Type': 'application/json',
@@ -27,7 +29,7 @@ def provision(name, url, credentials):
             raise RuntimeError('Security fixture request failed with HTTP ' + str(error.code)) from None
 
     if request('/v2/security/x509-credential?alias=RelayDemoCertificate')[0] == 404:
-        subprocess.run(['docker', 'exec', name, 'openssl', 'req', '-x509', '-newkey', 'rsa:2048',
+        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048',
                         '-nodes', '-days', '30', '-subj', '/CN=relay-demo.invalid',
                         '-keyout', '/tmp/relay-demo-key.pem', '-out', '/tmp/relay-demo-cert.pem'],
                        check=True, capture_output=True, timeout=30)
@@ -36,7 +38,7 @@ def provision(name, url, credentials):
             'OwnerList': ['RelayLab'],
         })
         # Only the self-signed public certificate is imported; discard its unused lab key.
-        subprocess.run(["docker", "exec", name, "rm", "-f", "/tmp/relay-demo-key.pem"], check=True, capture_output=True, timeout=10)
+        subprocess.run(["rm", "-f", "/tmp/relay-demo-key.pem"], check=True, capture_output=True, timeout=10)
 
     if request('/v2/security/ssl-configuration?name=RelayDemoTLS')[0] == 404:
         request('/v2/security/ssl-configuration?name=RelayDemoTLS', 'PUT', {

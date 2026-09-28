@@ -575,10 +575,15 @@ if (
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const port = Number(process.env.PORT || 8787),
-    origin = `http://127.0.0.1:${port}`;
-  createApp({ irisUrl: process.env.IRIS_URL, origin }).listen(
-    port,
-    "127.0.0.1",
-    () => console.log(`IRIS Relay: ${origin}`),
+    origin = `http://127.0.0.1:${port}`,
+    // Loopback by default. The compose file sets 0.0.0.0 inside the container,
+    // where Docker publishes the port only on the host's 127.0.0.1.
+    host = process.env.RELAY_LISTEN_HOST || "127.0.0.1";
+  if (!["127.0.0.1", "0.0.0.0"].includes(host)) {
+    console.error("RELAY_LISTEN_HOST must be 127.0.0.1 or 0.0.0.0.");
+    process.exit(1);
+  }
+  createApp({ irisUrl: process.env.IRIS_URL, origin }).listen(port, host, () =>
+    console.log(`IRIS Relay: ${origin}`),
   );
 }

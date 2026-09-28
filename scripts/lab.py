@@ -4,12 +4,7 @@ import json
 import argparse
 import secrets
 import subprocess
-import time
-import urllib.request
-import urllib.error
-import base64
 from pathlib import Path
-from security_fixtures import provision
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = 'containers.intersystems.com/intersystems/iris-community@sha256:87c8b9062530093d30384d66caa9933b8399bfbace7ddb7f1bdb983c0bfdb85b'
@@ -28,11 +23,6 @@ LAB_URL='http://127.0.0.1:'+str(args.port)
 
 def command(*args, **kwargs):
     return subprocess.run(args, text=True, capture_output=True, check=True, timeout=90, **kwargs)
-
-def session(script, namespace='%SYS'):
-    out = command('docker', 'exec', '-i', TARGET, 'iris', 'session', 'IRIS', '-U', namespace, input=script+'\nhalt\n').stdout
-    if 'ERROR #' in out or '<' in out or 'RELAY_READY' not in out:
-        raise RuntimeError('IRIS setup did not confirm completion. Inspect the local container and retry; credentials were not printed.')
 
 def refuse(reason):
     raise SystemExit('Refused, nothing was changed: '+reason)
@@ -95,62 +85,18 @@ else:
         file.write(json.dumps(creds,indent=2))
     CREDENTIALS.chmod(0o600)
 
-for attempt in range(30):
-    try:
-        state=command('docker','exec',TARGET,'iris','qlist','IRIS').stdout
-        if '^running' in state:
-            break
-    except subprocess.CalledProcessError:
-        pass
-    time.sleep(1)
-else:
-    raise RuntimeError('IRIS did not start within 30 seconds.')
-
-# Generated credentials contain only URL-safe characters, and are never user input.
-session('''if '##class(Security.Users).Exists("RelayLab") { set sc=##class(Security.Users).Create("RelayLab","%%All","%s") if $SYSTEM.Status.IsError(sc) { halt } }
-if '##class(Security.Users).Exists("RelayObserver") { set sc=##class(Security.Users).Create("RelayObserver","%%Operator","%s") if $SYSTEM.Status.IsError(sc) { halt } }
-write "RELAY_READY",!
-''' % (creds['password'],creds['observerPassword']))
-command('docker','exec',TARGET,'mkdir','-p','/tmp/relay-src','/usr/irissys/mgr/relay')
-command('docker','cp',str(ROOT/'src'/'Relay'/'log_reader.py'),TARGET+':/usr/irissys/mgr/relay/log_reader.py')
-command('docker','cp',str(ROOT/'src'/'Relay')+'/.',TARGET+':/tmp/relay-src')
-session('''set sc=$SYSTEM.OBJ.Load("/tmp/relay-src/LogReader.cls","ck")
-if $SYSTEM.Status.IsError(sc) { halt }
-set sc=$SYSTEM.OBJ.Load("/tmp/relay-src/Api.cls","ck")
-if $SYSTEM.Status.IsError(sc) { halt }
-set props("NameSpace")="%SYS",props("DispatchClass")="Relay.Api",props("AutheEnabled")=32,props("Enabled")=1
-if '##class(Security.Applications).Exists("/api/relay") { set sc=##class(Security.Applications).Create("/api/relay",.props) if $SYSTEM.Status.IsError(sc) { halt } }
-write "RELAY_READY",!
-''')
-command('docker','cp',str(ROOT/'fixtures'/'Relay'/'DemoApi.cls'),TARGET+':/tmp/RelayDemoApi.cls')
-session('''set sc=$SYSTEM.OBJ.Load("/tmp/RelayDemoApi.cls","ck")
-if $SYSTEM.Status.IsError(sc) { halt }
-write "RELAY_READY",!
-''', 'USER')
-session('''set props("NameSpace")="USER",props("DispatchClass")="Relay.DemoApi",props("AutheEnabled")=32,props("Enabled")=0,props("Resource")="%%Admin_Operate",props("Description")="Disposable Relay demonstration application"
-if '##class(Security.Applications).Exists("/relay-demo") { set sc=##class(Security.Applications).Create("/relay-demo",.props) if $SYSTEM.Status.IsError(sc) { halt } }
-if '##class(Security.Users).Exists("RelayDemoUser") { set sc=##class(Security.Users).Create("RelayDemoUser","","%s") if $SYSTEM.Status.IsError(sc) { halt } kill props set props("Enabled")=0,props("FullName")="Disposable Relay demonstration account" set sc=##class(Security.Users).Modify("RelayDemoUser",.props) if $SYSTEM.Status.IsError(sc) { halt } }
-write "RELAY_READY",!
-''' % secrets.token_urlsafe(30))
-command('docker','cp',str(ROOT/'fixtures'/'Relay'/'SmokeTask.cls'),TARGET+':/tmp/RelaySmokeTask.cls')
-session('''set sc=$SYSTEM.OBJ.Load("/tmp/RelaySmokeTask.cls","ck")
-if $SYSTEM.Status.IsError(sc) { halt }
-if '$Data(^RelayLabFixture) { set t=##class(%SYS.Task).%New(),t.Name="Relay demonstration task",t.TaskClass="Relay.SmokeTask",t.NameSpace="USER",t.RunAsUser="RelayLab",t.TimePeriod=0,t.TimePeriodEvery=1,t.DailyStartTime=86399,t.StartDate=$Piece($Horolog,",",1)+1 set sc=t.%Save() if $SYSTEM.Status.IsError(sc) { halt } set ^RelayLabFixture=t.%Id() }
-write "RELAY_READY",!
-''', 'USER')
-# Provision a disposable wallet collection through the documented management API.
-wallet_url=LAB_URL+'/api/admin/v2/wallet/collection?name=RelayDemo'
-headers={'Authorization':'Basic '+base64.b64encode((creds['username']+':'+creds['password']).encode()).decode(),'Content-Type':'application/json'}
-try:
-    with urllib.request.urlopen(urllib.request.Request(wallet_url,headers=headers),timeout=10) as response:
-        json.load(response)
-except urllib.error.HTTPError as error:
-    if error.code != 404: raise RuntimeError('Wallet fixture lookup failed.') from None
-    payload=json.dumps({'EditResource':'%Admin_Wallet:USE','UseResource':'%Admin_Wallet:USE'}).encode()
-    with urllib.request.urlopen(urllib.request.Request(wallet_url,method='PUT',headers=headers,data=payload),timeout=10) as response:
-        result=json.load(response)
-        if result.get('status',{}).get('errors'): raise RuntimeError('Wallet fixture creation failed.')
-provision(TARGET,LAB_URL,creds)
+# All provisioning runs inside the container through scripts/bootstrap.py, the same
+# path docker compose uses. Only the files it needs are copied in.
+command('docker','exec','-u','root',TARGET,'rm','-rf','/tmp/relay-bootstrap')
+command('docker','exec',TARGET,'mkdir','-p','/tmp/relay-bootstrap/src','/tmp/relay-bootstrap/fixtures','/tmp/relay-bootstrap/scripts')
+command('docker','cp',str(ROOT/'src'/'Relay'),TARGET+':/tmp/relay-bootstrap/src/Relay')
+command('docker','cp',str(ROOT/'fixtures'/'Relay'),TARGET+':/tmp/relay-bootstrap/fixtures/Relay')
+for helper in ['bootstrap.py','security_fixtures.py']:
+    command('docker','cp',str(ROOT/'scripts'/helper),TARGET+':/tmp/relay-bootstrap/scripts/'+helper)
+setup=subprocess.run(['docker','exec','-i',TARGET,'python3','/tmp/relay-bootstrap/scripts/bootstrap.py','--src','/tmp/relay-bootstrap','--credentials-stdin'],
+                     input=json.dumps(creds),text=True,capture_output=True,timeout=600)
+if setup.returncode != 0:
+    raise SystemExit((setup.stderr.strip() or setup.stdout.strip() or 'bootstrap failed without a message')+' The container was left as it is for inspection.')
 print('Local IRIS ready at '+LAB_URL)
 print('Private laboratory credentials: '+str(CREDENTIALS))
 print('Run IRIS_URL='+LAB_URL+' npm start, then open http://127.0.0.1:8787')

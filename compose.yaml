@@ -1,0 +1,47 @@
+# One-command lab: docker compose up -d, then open http://127.0.0.1:8787
+# Credentials: docker compose exec iris cat /usr/irissys/mgr/relay/lab-credentials.json
+# Disposable demonstration data only. Both ports are published on 127.0.0.1 only.
+name: iris-relay
+
+services:
+  iris:
+    image: containers.intersystems.com/intersystems/iris-community@sha256:87c8b9062530093d30384d66caa9933b8399bfbace7ddb7f1bdb983c0bfdb85b
+    command:
+      - --before
+      - rm -f /usr/irissys/mgr/relay/.bootstrap-ok
+      - --after
+      - python3 /opt/relay/scripts/bootstrap.py --src /opt/relay --credentials-file /usr/irissys/mgr/relay/lab-credentials.json --public-url http://127.0.0.1:52773 --ready-file /usr/irissys/mgr/relay/.bootstrap-ok
+    volumes:
+      - ./src:/opt/relay/src:ro
+      - ./fixtures:/opt/relay/fixtures:ro
+      - ./scripts:/opt/relay/scripts:ro
+    ports:
+      # Relay shares this network namespace; IRIS itself is not published.
+      - "127.0.0.1:8787:8787"
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "test", "-f", "/usr/irissys/mgr/relay/.bootstrap-ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+
+  relay:
+    image: node:22-alpine
+    user: node
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    environment:
+      IRIS_URL: http://127.0.0.1:52773
+      PORT: "8787"
+      RELAY_LISTEN_HOST: 0.0.0.0
+    volumes:
+      - ./:/app:ro
+    network_mode: service:iris
+    depends_on:
+      iris:
+        condition: service_healthy
+        # Relay lives in the IRIS network namespace, so it must restart with IRIS.
+        restart: true
+    restart: unless-stopped
