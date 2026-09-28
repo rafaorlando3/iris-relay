@@ -32,4 +32,3 @@ For a no-installation overview, serve `docs/demo` with a static HTTP server. The
 1. With the lab and Relay running, execute `python3 scripts/lab-rotate-log.py` (about one minute). It creates a real `messages.old_*` rotation and restores the original `MaxConsoleLogSize`. If the lab was created before 0.3, first run `python3 scripts/lab.py --adopt-container <full ID>` with the ID shown by `docker inspect -f '{{.Id}}' iris-relay-2026-2`.
 2. Open **Log investigation**. The selector has a second group, "Archived rotations (messages.old_*)", newest first with size and last-write time.
 3. Choose one, select **Older records** to page backwards, and search the loaded page (for example `grown beyond`, the line IRIS writes when it rotates the log).
-

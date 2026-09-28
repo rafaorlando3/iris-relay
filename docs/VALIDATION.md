@@ -69,4 +69,3 @@ No acceptance, prize, awarded bonus points or income is inferred from these chec
 * The demo video was recorded against this lab. The task, user role and every other fixture changed on camera were restored and read back afterwards (task 1000 not suspended; RelayDemoUser disabled with no roles).
 
 No acceptance, prize, awarded bonus points or income is inferred from these checks.
-

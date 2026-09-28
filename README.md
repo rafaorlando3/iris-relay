@@ -6,7 +6,7 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 
 ![IRIS Relay: a reviewed task change, applied and verified in IRIS](docs/images/review-verified.png)
 
-* **Video demo (2:38):** VIDEO_LINK_PENDING
+* **Video demo (2:38):** https://youtu.be/i_EW6gS3EJg
 * **Open Exchange:** https://openexchange.intersystems.com/package/IRIS-Relay
 * **No-install walkthrough (fictional data, no IRIS):** https://rafaorlando3.github.io/iris-relay/
 * **Community Opportunity idea implemented:** [DPI-I-966, "Option to show older message.log in IRIS SMP"](https://ideas.intersystems.com/ideas/DPI-I-966)
