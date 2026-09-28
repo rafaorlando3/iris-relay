@@ -28,7 +28,7 @@ class Identify(unittest.TestCase):
             return rotate.identify(name, self.record)
 
     def test_recorded_lab_is_accepted(self):
-        self.assertEqual(self.check(container())['containerId'], 'abc123')
+        self.assertEqual(self.check(container()), 'abc123')
 
     def test_same_image_but_other_container_is_refused(self):
         with self.assertRaisesRegex(rotate.Refused, 'container ID'):
@@ -54,6 +54,23 @@ class Identify(unittest.TestCase):
         self.record.write_text('{broken')
         with self.assertRaisesRegex(rotate.Refused, 'unreadable'):
             self.check(container())
+
+
+class TargetsId(unittest.TestCase):
+    def test_every_docker_call_uses_the_verified_id(self):
+        calls = []
+        def fake_run(*cmd, **kw):
+            calls.append(cmd)
+            out = 'RELAY_OK 5\n' if 'session' in cmd else ('^running' if 'qlist' in cmd else '')
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr='')
+        lab = rotate.Lab('0123456789abcdef' * 4)
+        with mock.patch.object(rotate, 'run', side_effect=fake_run):
+            lab.max_size(); lab.set_max_size(1); lab.restart(); lab.write_lines(); lab.archived()
+        self.assertTrue(calls)
+        for cmd in calls:
+            self.assertEqual(cmd[0], 'docker')
+            self.assertIn('0123456789abcdef' * 4, cmd, cmd)
+            self.assertNotIn('lab', cmd, cmd)
 
 
 class FakeLab:

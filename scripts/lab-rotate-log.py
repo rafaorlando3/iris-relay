@@ -11,9 +11,10 @@ The script lowers MaxConsoleLogSize to 1 MB, restarts the lab, writes clearly
 labelled lines until IRIS rotates messages.log, then restores the original
 setting and restarts again. Restoration runs even if a later step fails.
 
-Labs created before this record existed: run `python3 scripts/lab.py` once. It
-already manages that container (same name, pinned image and your credentials
-file) and now records its ID.
+Labs created before this record existed are refused. Confirm the container's
+full ID with `docker inspect -f '{{.Id}}' <name>` and run
+`python3 scripts/lab.py --adopt-container <full ID>` once, or create a new lab
+with a different name, port, credentials and record path.
 """
 import argparse
 import json
@@ -35,7 +36,10 @@ def run(*cmd, **kw):
 
 
 def identify(name, record_path):
-    """Return the lab record if `name` is the exact container lab.py recorded, else raise Refused."""
+    """Return the verified full container ID if `name` is the exact container lab.py recorded, else raise Refused.
+
+    Every later operation targets that ID, never the name, so renaming or recreating a
+    container between identification and execution cannot redirect the changes."""
     try:
         record = json.loads(Path(record_path).read_text())
     except FileNotFoundError:
@@ -58,12 +62,12 @@ def identify(name, record_path):
         raise Refused(f'Container {name!r} is not published only on 127.0.0.1:{record.get("port")} as recorded.')
     if not info['State']['Running']:
         raise Refused(f'Container {name!r} is not running. Start it with python3 scripts/lab.py.')
-    return record
+    return info['Id']
 
 
 class Lab:
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, container_id):
+        self.name = container_id  # full ID from identify(); docker accepts it wherever a name is accepted
 
     def session(self, script):
         out = run('docker', 'exec', '-i', self.name, 'iris', 'session', 'IRIS', '-U', '%SYS', input=script + '\nhalt\n').stdout
@@ -144,12 +148,13 @@ def main(argv=None):
     parser.add_argument('--wait', type=int, default=240, help='seconds to wait for IRIS to rotate the log')
     args = parser.parse_args(argv)
     try:
-        identify(args.name, args.setup_record)
+        container_id = identify(args.name, args.setup_record)
     except Refused as reason:
         print('Refused, nothing was changed:', reason, file=sys.stderr)
         raise SystemExit(3)
+    print('Target container:', container_id[:12])
     try:
-        rotate(Lab(args.name), args.wait)
+        rotate(Lab(container_id), args.wait)
     except (RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         # Only reachable before the first change: later failures are handled inside rotate().
         print('Failed before any change, nothing was modified:', error, file=sys.stderr)
