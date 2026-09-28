@@ -11,7 +11,7 @@ Log investigation now lists archived runtime log rotations from the manager dire
 * Read with the same bounded paging (64 KiB / 150 lines), backward cursor, page search and change detection as the current log.
 * IDs such as `runtime.old_20260928_1` are validated by both the Node server and the Embedded Python reader. Path separators, dots, symbolic links and special files are refused. Compressed rotations are not listed.
 
-`scripts/lab-rotate-log.py` creates a real rotation in the disposable lab (lowers `MaxConsoleLogSize` to 1 MB, writes labelled lines, waits for IRIS to rotate, restores the original value).
+`scripts/lab-rotate-log.py` creates a real rotation in the disposable lab (lowers `MaxConsoleLogSize` to 1 MB, writes labelled lines, waits for IRIS to rotate, restores the original value even if a step fails). It acts only on the container recorded by `scripts/lab.py` in the new non-secret `artifacts/lab-setup.json` (name, container ID, pinned image, loopback port); any other container, including one with the same image, is refused before any change.
 
 ## Other changes
 
@@ -21,4 +21,4 @@ Log investigation now lists archived runtime log rotations from the manager dire
 
 ## Verification
 
-43 JavaScript tests and 9 Python tests pass. On a fresh x86-64 IRIS Community 2026.2 (Build 221U) lab container: three real rotations were produced and listed newest first, an archived file was read and paged backwards through Relay's HTTP API, traversal IDs returned HTTP 400, and the existing management, explorer, audit and log checks (`verify-management.py`, `verify-enhancements.py`) passed with every fixture restored.
+43 JavaScript tests and 15 Python tests pass. On a fresh x86-64 IRIS Community 2026.2 (Build 221U) lab container: three real rotations were produced and listed newest first, an archived file was read and paged backwards through Relay's HTTP API, traversal IDs returned HTTP 400, and the existing management, explorer, audit and log checks (`verify-management.py`, `verify-enhancements.py`) passed with every fixture restored.

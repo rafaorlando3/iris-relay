@@ -29,7 +29,7 @@ For a no-installation overview, serve `docs/demo` with a static HTTP server. The
 
 ## 0.3 addition for reviewers
 
-1. With the lab and Relay running, execute `python3 scripts/lab-rotate-log.py` (about one minute). It creates a real `messages.old_*` rotation and restores the original `MaxConsoleLogSize`.
+1. With the lab and Relay running, execute `python3 scripts/lab-rotate-log.py` (about one minute). It creates a real `messages.old_*` rotation and restores the original `MaxConsoleLogSize`. If the lab was created before 0.3, run `python3 scripts/lab.py` once first so the helper can identify it.
 2. Open **Log investigation**. The selector has a second group, "Archived rotations (messages.old_*)", newest first with size and last-write time.
 3. Choose one, select **Older records** to page backwards, and search the loaded page (for example `grown beyond`, the line IRIS writes when it rotates the log).
 

@@ -17,10 +17,12 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--name',default='iris-relay-2026-2')
 parser.add_argument('--port',type=int,default=52785)
 parser.add_argument('--credentials',default='artifacts/lab-credentials.json')
+parser.add_argument('--setup-record',default='artifacts/lab-setup.json',help='non-secret record binding this lab to its container ID')
 args=parser.parse_args()
 if not 1024 <= args.port <= 65535: parser.error('Use an unprivileged local port.')
 NAME=args.name
 CREDENTIALS=(ROOT / args.credentials).resolve()
+SETUP_RECORD=(ROOT / args.setup_record).resolve()
 LAB_URL='http://127.0.0.1:'+str(args.port)
 
 def command(*args, **kwargs):
@@ -47,6 +49,12 @@ else:
     with CREDENTIALS.open('x') as file:
         file.write(json.dumps(creds,indent=2))
     CREDENTIALS.chmod(0o600)
+
+# Non-secret record that binds this lab to the exact container this script manages.
+# Helpers that change lab settings (scripts/lab-rotate-log.py) refuse any container not listed here.
+container_id=json.loads(command('docker','inspect',NAME).stdout)[0]['Id']
+SETUP_RECORD.parent.mkdir(exist_ok=True)
+SETUP_RECORD.write_text(json.dumps({'name':NAME,'containerId':container_id,'image':IMAGE,'port':args.port,'url':LAB_URL},indent=2))
 
 for attempt in range(30):
     try:

@@ -61,7 +61,7 @@ IRIS remains responsible for authorization: Relay signs in with the operator's o
 
 When `messages.log` grows beyond `MaxConsoleLogSize`, IRIS renames it (for example `messages.old_20260928`, then `messages.old_20260928_1`) and the Management Portal log view shows only the current file (the gap described in idea DPI-I-966). Relay lists the archived files with size and last-write time, newest first, and reads them with the same paging and search as the current log. The browser sends a validated ID, never a path; links and special files are refused. Details in [docs/LOGS.md](docs/LOGS.md).
 
-To try it, run `python3 scripts/lab-rotate-log.py` with the lab running. It produces a real rotation in the lab container and then restores the original setting.
+To try it, run `python3 scripts/lab-rotate-log.py` with the lab running. It produces a real rotation in the lab container and then restores the original setting. It only acts on the container recorded by `scripts/lab.py` in `artifacts/lab-setup.json`; if your lab was created before 0.3, run `python3 scripts/lab.py` once to write that record.
 
 ## Architecture
 
@@ -87,7 +87,7 @@ Docker (pinned official IRIS Community 2026.2 image), Embedded Python (log reade
 
 ```sh
 npm test            # 43 JavaScript tests
-npm run test:logs   # 9 Python tests for the log reader
+npm run test:logs   # 15 Python tests (log reader and lab helper)
 ```
 
 With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). See [docs/VALIDATION.md](docs/VALIDATION.md).
