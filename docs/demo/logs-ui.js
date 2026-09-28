@@ -61,6 +61,7 @@ export async function mountLogs(container, api, onResult, active) {
     status,
     results,
   );
+  root.append(similaritySearch(api, active));
   container.replaceChildren(root);
   let page = null,
     cursor = null,
@@ -138,4 +139,109 @@ export async function mountLogs(container, api, onResult, active) {
     status.textContent = "No supported text log is available in this instance.";
     onResult(null);
   }
+}
+
+// Similarity search across every indexed text log, ranked by IRIS VECTOR_COSINE.
+function similaritySearch(api, active) {
+  const box = el("section"),
+    form = el("form"),
+    query = el("input"),
+    run = el("button", "Search all logs"),
+    refresh = el("button", "Refresh index"),
+    status = el("p"),
+    results = el("div");
+  box.className = "vector-search";
+  box.append(
+    el("h3", "Search all logs by similarity"),
+    el(
+      "p",
+      "Finds lines with similar wording across the current logs and the archived messages.old_* files, ranked inside IRIS with VECTOR_COSINE. Repeats of the same message are grouped. The index keeps up to 3,000 recent lines per file and 20,000 in total; it is a cache rebuilt from the files, not an audit.",
+    ),
+  );
+  query.type = "search";
+  query.maxLength = 200;
+  query.required = true;
+  query.placeholder = "For example: journal switch, license exceeded, certificate expires";
+  query.setAttribute("aria-label", "Search all logs by similarity");
+  run.type = "submit";
+  run.className = "primary";
+  refresh.type = "button";
+  form.className = "toolbar";
+  form.append(query, run, refresh);
+  box.append(form, status, results);
+  let busy = false;
+  const lock = (on) => {
+    busy = on;
+    run.disabled = refresh.disabled = query.disabled = on;
+  };
+  async function reindex() {
+    status.textContent = "Updating the index from the log files…";
+    const r = await api("/api/logs/index", "POST", {});
+    const problems = r.problems?.length
+      ? ` ${r.problems.length} file(s) not indexed: ${r.problems.map((p) => p.source + " (" + p.status + ")").join("; ")}.`
+      : "";
+    status.textContent = `Index: ${r.totalLines} lines from ${r.files} files. ${r.indexedLines} lines updated, ${r.unchangedFiles} files unchanged.${problems}`;
+    return r;
+  }
+  function render(r) {
+    results.replaceChildren();
+    if (!r.rows.length) {
+      results.append(el("p", "No similar lines found."));
+      return;
+    }
+    const table = el("table"),
+      head = el("tr");
+    for (const h of ["Similarity", "Message", "Seen", "Files", "Time", "Level"])
+      head.append(el("th", h));
+    table.append(head);
+    for (const row of r.rows) {
+      const tr = el("tr"),
+        message = el("td", row.Message + (row.Contains ? "  [contains your text]" : ""));
+      message.className = "message-cell";
+      tr.append(
+        el("td", row.Score.toFixed(3)),
+        message,
+        el("td", `${row.Occurrences}× in ${row.Files.length} file${row.Files.length === 1 ? "" : "s"}`),
+        el("td", row.Files.join(", ")),
+        el("td", row.Time || "Not reported"),
+        el("td", row.Level ?? "Not reported"),
+      );
+      table.append(tr);
+    }
+    results.append(table);
+  }
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    lock(true);
+    try {
+      await reindex();
+      if (!active()) return;
+      const r = await api(
+        "/api/logs/search?" + new URLSearchParams({ q: query.value.trim(), limit: "15" }),
+      );
+      if (!active()) return;
+      status.textContent += ` ${r.rows.length} result group(s) among the ${r.candidates} closest lines.`;
+      render(r);
+    } catch (error) {
+      if (active()) {
+        results.replaceChildren();
+        status.textContent = error.message;
+      }
+    } finally {
+      if (active()) lock(false);
+    }
+  });
+  refresh.addEventListener("click", async () => {
+    if (busy) return;
+    lock(true);
+    try {
+      await reindex();
+    } catch (error) {
+      if (active()) status.textContent = error.message;
+    } finally {
+      if (active()) lock(false);
+    }
+  });
+  return box;
 }

@@ -8,7 +8,7 @@ op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar
 def api(path,method='GET',data=None):
  req=urllib.request.Request(origin+path,method=method,headers={'Origin':origin,'Content-Type':'application/json','X-Relay-CSRF':csrf},data=json.dumps(data).encode() if data is not None else None)
  try:
-  with op.open(req,timeout=20) as r:return r.status,json.load(r)
+  with op.open(req,timeout=150) as r:return r.status,json.load(r)
  except urllib.error.HTTPError as e:return e.code,json.load(e)
 code,login=api('/api/login','POST',{'username':c['username'],'password':c['password']});assert code==200,login;assert login['server']==c['url'];csrf=login['csrf'];report=[]
 fields={'tls':['Description','Enabled','TLSMinVersion','TLSMaxVersion','VerifyPeer'],'rolePolicy':['Description','Resources'],'oauthSettings':['Description','Enabled','IssuerEndpoint','Audiences','ScopeRequiredToConnect']}
@@ -41,7 +41,17 @@ for source in sources['sources']:
 report.append({'archivedRotations':sum(1 for s in sources['sources'] if s.get('archived')),'archivedOmitted':sources.get('archivedOmitted')})
 for path in ['/api/logs/page?source=../../private','/api/logs/page?cursor=bad!','/api/logs/page?source=runtime.old_..%2Firis.cpf','/api/logs/page?source=alerts.old_1']:
  code,_=api(path);assert code==400
+# 0.4: similarity search across all logs (IRIS Vector Search)
+code,idx=api('/api/logs/index','POST',{});assert code==200 and idx['totalLines']>0 and idx['files']>=1,idx
+code,again=api('/api/logs/index','POST',{});assert code==200 and again['indexedLines']<=idx['totalLines'],again
+code,found=api('/api/logs/search?'+urllib.parse.urlencode({'q':'journaling started','limit':5}));assert code==200 and found['rows'] and len(found['rows'])<=5,found
+assert all(r['Score']>0 and r['Occurrences']>=1 and r['Files'] for r in found['rows']),found
+for bad in ['q=','q='+'x'*201,'q=a&limit=99']:
+ code,_=api('/api/logs/search?'+bad);assert code==400,bad
+report.append({'vectorIndex':{'lines':idx['totalLines'],'files':idx['files'],'secondRefreshUpdatedLines':again['indexedLines']},'vectorSearchTop':found['rows'][0]['Message'][:80],'vectorSearchScore':found['rows'][0]['Score']})
 code,login=api('/api/login','POST',{'username':'RelayObserver','password':c['observerPassword']});assert code==200;csrf=login['csrf']
+code,r=api('/api/logs/index','POST',{});assert code==409 and 'not privileged' in r['error'],r
+report.append({'observerVectorIndex':code,'reason':r['error']})
 for kind,name in [('tls','RelayDemoTLS'),('rolePolicy','RelayDemoRole'),('oauthSettings','RelayDemoOAuth')]:
  code,r=api('/api/manage/preview','POST',{'kind':kind,'name':name,'configuration':{}});assert code==403,r
  report.append({'observerDenied':kind,'status':code})

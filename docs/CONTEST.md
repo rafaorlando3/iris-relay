@@ -11,17 +11,18 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 | Security and secrets | Wallet collection access policy and secret inventory (names and types), X.509 owner lists, OAuth resource servers, TLS configurations | No secret value reads or edits, no key import or rotation, no end-to-end OAuth provider test |
 | Task management | Tasks, task history, suspend/resume of user tasks verified through task/info | System tasks are protected |
 | Operating system | System overview, resources, processes, devices, journal files | No process termination |
-| Log monitoring and reporting | Embedded Python reader for current and archived text logs, audit summaries, Markdown/JSON handover | No journal content decoding or every subsystem log |
+| Log monitoring and reporting | Embedded Python reader for current and archived text logs, similarity search across them with IRIS Vector Search, audit summaries, Markdown/JSON handover | No journal content decoding or every subsystem log |
 
 ## Technology bonuses (self-assessment; the organizers decide)
 
 | Bonus | What the repository provides |
 | --- | --- |
-| Docker | `scripts/lab.py` runs the pinned official IRIS Community 2026.2 container |
-| Embedded Python | `Relay.LogReader` runs `src/Relay/log_reader.py` inside IRIS |
+| Docker | `docker compose up -d` (IRIS + Relay, one command) and `scripts/lab.py`, both on the pinned official IRIS Community 2026.2 image |
+| Embedded Python | `Relay.LogReader` runs `src/Relay/log_reader.py` and `log_vectors.py` inside IRIS |
+| Vector search | `Relay.LogLine` stores `VECTOR(DOUBLE, 256)` embeddings of log lines; similarity search ranks them with `VECTOR_COSINE` ([details](LOGS.md)) |
 | Community Opportunity idea | [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966), archived `messages.old_*` logs, in 0.3.0 ([details](LOGS.md)) |
 | YouTube video | Demo recorded on the real lab (link in README once published) |
 | Article | Developer Community article (link in README once published) |
 | First contribution | First Open Exchange contest for the author |
 
-Not provided: IPM package, vector search, hosted live demo (the GitHub Pages walkthrough is static and fictional), Embedded Python bug report.
+Not provided yet: IPM package, hosted live demo (the GitHub Pages walkthrough is static and fictional). Not provided: Embedded Python bug report.

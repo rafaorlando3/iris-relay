@@ -306,3 +306,43 @@ test("archived log IDs are forwarded as IDs; paths and other names are refused",
   }
   assert.equal(seen.length, before);
 });
+
+test("log similarity search validates input, forwards IDs only, and index refresh needs the CSRF token", async (t) => {
+  const seen = [];
+  const { url, login } = await setup(t, async (u, options) => {
+    if (u.pathname.startsWith("/api/relay/")) {
+      seen.push(options.method + " " + u.pathname + u.search);
+      if (u.pathname.endsWith("/log-index"))
+        return new Response(JSON.stringify({ indexedLines: 3, totalLines: 3, files: 1, unchangedFiles: 0, problems: [] }), { status: 200 });
+      if (u.searchParams.get("q") === "empty index")
+        return new Response(JSON.stringify({ error: "The log index is empty. Refresh the index first." }), { status: 200 });
+      return new Response(JSON.stringify({ query: u.searchParams.get("q"), candidates: 200, rows: [{ Score: 0.5, Message: "License limit exceeded", Occurrences: 3, Files: ["messages.old_20260927"] }] }), { status: 200 });
+    }
+    return ok({ apiVersion: 2 });
+  });
+  const l = await login(),
+    cookie = l.headers.get("set-cookie").split(";")[0],
+    { csrf } = await l.json();
+  const get = (q) => fetch(url + "/api/logs/search?" + q, { headers: { Cookie: cookie } });
+  const good = await get("q=" + encodeURIComponent("licence limit") + "&limit=5");
+  assert.equal(good.status, 200);
+  assert.equal((await good.json()).rows[0].Occurrences, 3);
+  assert.match(seen.at(-1), /^GET \/api\/relay\/log-search\?q=licence\+limit&limit=5$/);
+  const before = seen.length;
+  for (const bad of ["q=", "q=" + "x".repeat(201), "q=a&limit=0", "q=a&limit=51", "q=a&limit=2.5"])
+    assert.equal((await get(bad)).status, 400, bad);
+  assert.equal(seen.length, before);
+  assert.equal((await get("q=empty+index")).status, 409);
+  const post = (headers) =>
+    fetch(url + "/api/logs/index", {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: url, "Content-Type": "application/json", ...headers },
+      body: "{}",
+    });
+  assert.equal((await post({})).status, 403);
+  assert.equal(seen.filter((s) => s.startsWith("POST")).length, 0);
+  const indexed = await post({ "X-Relay-CSRF": csrf });
+  assert.equal(indexed.status, 200);
+  assert.equal((await indexed.json()).totalLines, 3);
+  assert.equal(seen.filter((s) => s === "POST /api/relay/log-index").length, 1);
+});

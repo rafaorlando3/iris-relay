@@ -69,8 +69,11 @@ No acceptance, prize, awarded bonus points or income is inferred from these chec
 * The demo video was recorded against this lab. The task, user role and every other fixture changed on camera were restored and read back afterwards (task 1000 not suspended; RelayDemoUser disabled with no roles).
 
 No acceptance, prize, awarded bonus points or income is inferred from these checks.
+
 ## Version 0.4 (in progress), September 28, 2026
 
 * One-command lab: `docker compose up -d` started the pinned IRIS image and Relay (node:22-alpine) in about 11 seconds on x86-64. `scripts/bootstrap.py` ran inside the IRIS container through `iris-main --after`, created the lab accounts with generated passwords (credentials file 0600 inside the container), the Relay extension and every fixture. Relay started only after the health check. `verify-management.py` and `verify-enhancements.py` passed against the compose lab, using the credentials read with `docker compose exec`.
 * `docker compose restart iris` re-ran the idempotent bootstrap with the same credentials and restarted Relay with it (Relay shares the IRIS network namespace, so it follows IRIS restarts); login worked afterwards.
 * `scripts/lab.py` now uses the same bootstrap. A registered lab from 0.3 was re-provisioned (the root-owned `log_reader.py` left by the old `docker cp` is replaced by rename), and a brand-new lab on another name and port passed both live verification scripts.
+* Similarity search (IRIS Vector Search): the first refresh indexed 18,202 lines from 9 files (current, SystemMonitor, alerts and six archived rotations) in about 7 seconds; the second skipped all 9 unchanged files in 0.13 seconds. "log file grew too large" returned the rotation message grouped as 6 occurrences in 6 files; "journal switch" returned the journaling lines from current and archived files; queries took 0.1 to 0.25 seconds. The `%Operator` observer received "User RelayObserver is not privileged for the operation" for both refresh and search, shown as the reason. `verify-enhancements.py` now covers index, incremental refresh, search, input bounds and the observer denial; it passed on the `lab.py` lab and on a new compose lab (388 lines from 2 files), together with `verify-management.py`. 44 JavaScript and 21 Python tests pass.
+

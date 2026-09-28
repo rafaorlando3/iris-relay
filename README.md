@@ -54,7 +54,7 @@ Suggested 5-minute tour: Scheduled tasks → Capture baseline → Suspend `Relay
 | Security and secrets | Wallet collection access policies (secret values are never read), X.509 credential owner lists, OAuth resource servers (issuer, audiences, scope, status), TLS configurations (TLS 1.2/1.3 bounds, peer verification cannot be weakened). |
 | Task management | Scheduled tasks and task history. Suspend or resume user tasks with state verified through the detail endpoint. System tasks are protected. |
 | Operating system | System overview, resources, processes, devices and journal files. |
-| Log monitoring and reporting | Embedded Python reader for `messages.log`, System Monitor and alert logs, **including archived `messages.old_*` files (new in 0.3)**, with backward paging and search. Background audit queries. Markdown/JSON handover exports. |
+| Log monitoring and reporting | Embedded Python reader for `messages.log`, System Monitor and alert logs, **including archived `messages.old_*` files (0.3)**, with backward paging and page search. **Similarity search across all of those files with IRIS Vector Search (0.4).** Background audit queries. Markdown/JSON handover exports. |
 
 ## How a change works
 
@@ -65,6 +65,12 @@ Suggested 5-minute tour: Scheduled tasks → Capture baseline → Suspend `Relay
 5. **Hand over.** The last 100 accepted changes, with their verification result, go into the handover export together with your notes and the baseline comparison.
 
 IRIS remains responsible for authorization: Relay signs in with the operator's own IRIS account and never elevates privileges.
+
+## New in 0.4: search every log file by similarity (IRIS Vector Search)
+
+![Similarity search across current and archived logs](docs/images/vector-search.png)
+
+Type what you are looking for ("journal switch", "license exceeded") and Relay finds lines with similar wording across the current logs, the numbered rotations and the archived `messages.old_*` files. Each line is embedded inside IRIS (Embedded Python) and stored in `Relay.LogLine` with a `VECTOR(DOUBLE, 256)` column; the query is ranked with `VECTOR_COSINE` in IRIS SQL, and repeats of the same message are grouped with how often and in which files they occur. The embedding is lexical (hashed words and character trigrams), so it needs no model download and no data leaves IRIS. The index is a bounded cache (3,000 recent lines per file, 20,000 in total) refreshed incrementally: unchanged files are skipped. Searching needs SQL SELECT on `Relay.LogLine` and refreshing needs INSERT and DELETE; a `%Operator` account gets an explicit "not privileged" answer. Details in [docs/LOGS.md](docs/LOGS.md).
 
 ## New in 0.3: archived messages.log files (DPI-I-966)
 
@@ -92,20 +98,20 @@ flowchart LR
 
 ## Technology used
 
-Docker (pinned official IRIS Community 2026.2 image), Embedded Python (log reader running inside IRIS), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. There is no IPM package, vector search or hosted live demo; the GitHub Pages walkthrough is a static page with fictional data.
+Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose` lab), Embedded Python (log reader and embeddings running inside IRIS), IRIS Vector Search (`VECTOR` column and `VECTOR_COSINE`), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. There is no IPM package or hosted live demo yet; the GitHub Pages walkthrough is a static page with fictional data.
 
 ## Validation
 
 ```sh
-npm test            # 43 JavaScript tests
-npm run test:logs   # 16 Python tests (log reader and lab helper)
+npm test            # 44 JavaScript tests
+npm run test:logs   # 21 Python tests (log reader, similarity index, lab helper)
 ```
 
 With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). See [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Limitations
 
-This is an experimental tool for authorized administrators, not a replacement for the whole Management Portal and not a production readiness claim. It does not edit secret values, import or rotate keys, create roles, test a full OAuth provider flow, terminate processes, parse journal contents or read every subsystem log. Session history is not a durable audit. Search applies to the loaded log page.
+This is an experimental tool for authorized administrators, not a replacement for the whole Management Portal and not a production readiness claim. It does not edit secret values, import or rotate keys, create roles, test a full OAuth provider flow, terminate processes, parse journal contents or read every subsystem log. Session history is not a durable audit. Page search applies to the loaded page; similarity search covers the bounded index described above and ranks by wording, not meaning.
 
 ## Detailed guide
 

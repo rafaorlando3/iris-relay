@@ -24,6 +24,16 @@ Archived IDs look like `runtime.old_20260928_1`. The suffix may contain only let
 
 To see a real rotation in the disposable lab, run `python3 scripts/lab-rotate-log.py`. It lowers `MaxConsoleLogSize` (a `[Startup]` setting, in MB) to 1, restarts the lab container, writes labelled lines until IRIS creates a new `messages.old_*` file (about one minute), then restores the original value and restarts again. It acts only on the container that `scripts/lab.py` recorded in `artifacts/lab-setup.json` (same name and container ID, pinned image, IRIS published only on 127.0.0.1 at the recorded port), refuses anything else before changing a setting or restarting, and sends every later command to that container ID rather than the name. The original value is restored even if a later step fails. `scripts/lab.py` itself reuses a container only when the same record matches; a lab created before 0.3 is refused until you confirm its full ID with `docker inspect -f '{{.Id}}' <name>` and run `python3 scripts/lab.py --adopt-container <full ID>` once.
 
+## Similarity search across all files (0.4)
+
+`src/Relay/log_vectors.py` (Embedded Python, loaded by `Relay.LogReader`) reads the newest complete lines of every available source (at most 1 MiB and 3,000 lines per file, 20,000 lines in total, current and numbered files first, then archived newest first) and stores them in `Relay.LogLine` with an embedding column `VECTOR(DOUBLE, 256)`. A query is embedded the same way and ranked in IRIS SQL with `VECTOR_COSINE`; the 200 closest lines are grouped by message pattern (digits folded) and returned with the number of occurrences and the files where they appear.
+
+* Embedding: words and character trigrams hashed into 256 dimensions and L2-normalized, digits folded so timestamps and PIDs do not dominate. Lexical similarity, not a language model; no download and no external call.
+* Refresh is incremental: a file whose identity (device, inode, size, modification time) and line count did not change is skipped; a changed file is replaced; a file that disappeared is removed from the index. A file that changes while it is read is reported as not indexed.
+* Same symbolic-link and special-file refusal as the reader. Queries are 1 to 200 characters and at most 50 groups.
+* Privileges are IRIS SQL privileges on `Relay.LogLine`: SELECT to search, INSERT and DELETE to refresh. Failures return the IRIS reason (for example "not privileged") instead of an empty result.
+* The index is a disposable cache in `%SYS`, not an audit; deleting it loses nothing that is not in the files.
+
 The browser supplies a source ID, never a file path. Symbolic links and nonregular files are refused. Messages are capped at 2,000 characters and flagged when shortened. Oversized fragments are skipped with a visible flag. An unfinished final line appears only after its newline is written. Searching applies to the current page, not the entire file.
 
 This is not universal coverage of every subsystem. Custom application paths, compressed rotations, Windows Event Log, journal record decoding and interoperability message bodies are not included. Manager-directory Linux instances are supported; IRIS 2026.2 was exercised on ARM64 and x86-64 containers. Free-text logs may contain sensitive information: review any export before sharing it.

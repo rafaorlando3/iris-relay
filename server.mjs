@@ -84,9 +84,10 @@ export function createApp({
     method = "GET",
     data,
     base = "/api/admin",
+    timeoutMs = 10000,
   ) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetcher(new URL(base + path, target), {
         method,
@@ -324,6 +325,38 @@ export function createApp({
                 metadata: { ...result.data, rows: undefined },
               },
         );
+      }
+      if (url.pathname === "/api/logs/search" && req.method === "GET") {
+        const q = (url.searchParams.get("q") || "").trim(),
+          limit = Number(url.searchParams.get("limit") || 20);
+        if (!q || q.length > 200 || !Number.isInteger(limit) || limit < 1 || limit > 50)
+          return reply(res, 400, {
+            error: "Enter a search text of 1 to 200 characters and a limit from 1 to 50.",
+          });
+        const result = await upstream(
+          session.credentials,
+          "/log-search?" + new URLSearchParams({ q, limit: String(limit) }),
+          "GET",
+          undefined,
+          "/api/relay",
+        );
+        if (!result.ok) return reply(res, result.status, { error: result.error });
+        if (result.data.error) return reply(res, 409, { error: result.data.error });
+        return reply(res, 200, result.data);
+      }
+      if (url.pathname === "/api/logs/index" && req.method === "POST") {
+        // Indexing reads up to 20,000 lines inside IRIS; allow it more time than a view.
+        const result = await upstream(
+          session.credentials,
+          "/log-index",
+          "POST",
+          {},
+          "/api/relay",
+          120000,
+        );
+        if (!result.ok) return reply(res, result.status, { error: result.error });
+        if (result.data.error) return reply(res, 409, { error: result.data.error });
+        return reply(res, 200, result.data);
       }
       if (url.pathname === "/api/audit/query" && req.method === "POST")
         return reply(

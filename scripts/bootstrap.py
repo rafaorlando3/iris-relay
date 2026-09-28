@@ -72,10 +72,13 @@ def install_extension(src):
     target.mkdir(exist_ok=True)
     # Write a temporary copy and rename it over the old one: this also replaces a
     # root-owned copy left by earlier versions of lab.py (which used docker cp).
-    staging = target / '.log_reader.py.new'
-    shutil.copyfile(src / 'src' / 'Relay' / 'log_reader.py', staging)
-    os.replace(staging, target / 'log_reader.py')
-    session('''set sc=$SYSTEM.OBJ.Load("%(src)s/src/Relay/LogReader.cls","ck")
+    for module in ['log_reader.py', 'log_vectors.py']:
+        staging = target / ('.' + module + '.new')
+        shutil.copyfile(src / 'src' / 'Relay' / module, staging)
+        os.replace(staging, target / module)
+    session('''set sc=$SYSTEM.OBJ.Load("%(src)s/src/Relay/LogLine.cls","ck")
+if $SYSTEM.Status.IsError(sc) { halt }
+set sc=$SYSTEM.OBJ.Load("%(src)s/src/Relay/LogReader.cls","ck")
 if $SYSTEM.Status.IsError(sc) { halt }
 set sc=$SYSTEM.OBJ.Load("%(src)s/src/Relay/Api.cls","ck")
 if $SYSTEM.Status.IsError(sc) { halt }

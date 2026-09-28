@@ -601,3 +601,29 @@ aside {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.vector-search {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e7e7;
+}
+.vector-search h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.vector-search form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.vector-search form input {
+  flex: 1;
+  min-width: 240px;
+  margin: 0;
+}
+.vector-search form button {
+  width: auto;
+  margin-top: 0;
+  padding: 11px 16px;
+}
