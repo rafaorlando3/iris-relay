@@ -1,5 +1,32 @@
 # Validation record
 
+## Deployment review, September 28, 2026
+
+The later records below retain their original scope and dates. On the dedicated
+Ubuntu 24.04 x86-64 demo VPS, review of 0.4 found and corrected three issues before
+publication: same-size log rewrites missed by filesystem timestamps, partial or
+concurrent index replacement, and upgrades that did not recreate IRIS.
+
+* 26 Python unit tests passed on the VPS, including deterministic same-size,
+  same-timestamp rewrites, old partial/duplicate index repair, and removal of stale
+  rows when a source cannot be read consistently. No project tests ran on the Mac.
+* A separate fresh IRIS 2026.2 container, with no network and only synthetic data,
+  passed seven checks in `scripts/verify-log-index.py`: initial index, rollback,
+  retry, partial-index repair, concurrent-writer refusal, a reader waiting for a
+  complete committed generation without duplicates, and preservation of a caller
+  transaction. SQL statements are explicitly prepared before data transactions.
+* The installer now requires a full reviewed commit SHA and recreates containers
+  on upgrade. Shell syntax and rejection of missing/moving refs passed on the VPS.
+* The original staging deployment passed 46 JavaScript tests and all 57 public
+  demo checks through real HTTPS. Only SSH, HTTP and HTTPS were exposed; IRIS had
+  no published port and Relay was bound to loopback. The hourly reset timer was
+  active. Final deployment results are recorded separately below when complete.
+
+For the isolated IRIS regression, enable `%Service_CallIn` only in the disposable
+test container, then run its `irispython` with `RELAY_DISPOSABLE_REVIEW=1`, first
+with `scripts/verify-log-index.py --prepare` and then without `--prepare`. It refuses
+an existing nonempty index. Do not run this synthetic-data test on a live instance.
+
 Observed locally on 2026-09-19. No production system, client data or paid infrastructure was involved.
 
 * IRIS Community 2026.2 Build 221U, ARM64, API version 2. Official container digest is pinned in scripts/lab.py.
@@ -78,4 +105,3 @@ No acceptance, prize, awarded bonus points or income is inferred from these chec
 * Similarity search (IRIS Vector Search): the first refresh indexed 18,202 lines from 9 files (current, SystemMonitor, alerts and six archived rotations) in about 7 seconds; the second skipped all 9 unchanged files in 0.13 seconds. "log file grew too large" returned the rotation message grouped as 6 occurrences in 6 files; "journal switch" returned the journaling lines from current and archived files; queries took 0.1 to 0.25 seconds. The `%Operator` observer received "User RelayObserver is not privileged for the operation" for both refresh and search, shown as the reason. `verify-enhancements.py` now covers index, incremental refresh, search, input bounds and the observer denial; it passed on the `lab.py` lab and on a new compose lab (388 lines from 2 files), together with `verify-management.py`. 44 JavaScript and 21 Python tests pass.
 * IPM package: on a plain IRIS 2026.2 container with the current IPM installer (from pm.community.intersystems.com) and no Relay bootstrap, `zpm "load"` of the repository installed the three classes in USER, copied both Python modules to `/usr/irissys/mgr/relay/` and created `/api/relay`. Two findings fixed before release: loading the whole `Relay` package made IPM reject the `.py` files (the module now lists the three classes), and IPM ignored `PasswordAuthEnabled`, leaving the application unauthenticated (every call then got 403 from the `%Admin_Operate` check); `AutheEnabled="32"` gives password authentication, confirmed in `Security.Applications`. After uninstall and reload: log sources, a 150-line page, index (398 lines, 0.4 s) and search answered for a password account, wrong credentials got 401, and the Relay UI server signed in to this instance and used the same endpoints plus the tasks view. `iris-relay` was not yet taken in the public registry.
 * Public demo mode (hosting rehearsal): with `compose.demo.yaml` behind Caddy (HTTPS on `localhost` with Caddy's local CA), `scripts/verify-demo.py` passed 57 checks as a visitor with the shared `RelayDemoOperator` account (`%Manager`, no `%All`): the `RelayLab` account was refused before any IRIS call; changes to `_SYSTEM`, the demo account itself, `/csp/sys`, `/api/admin`, `%SuperServer`, `%Developer` and a non-demo task were refused; every Relay demonstration object was changed, verified and restored; logs, similarity index and search, audit and explorer worked. The hourly reset (`up -d --force-recreate iris relay`) took 26 seconds and returned an application left enabled by a visitor to disabled. `scripts/demo-install.sh` was rehearsed in an Ubuntu 24.04 container with systemd and ufw stubbed: the first run exposed that its readiness probe was refused by Relay's host check (403 "Unexpected host."); the probe now sends the public host name and the rehearsal completed. 46 JavaScript tests (2 new for demo mode and session/throttle bounds).
-

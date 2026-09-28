@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the IRIS Relay public demo on a fresh, DEDICATED Ubuntu 24.04 server (2 GB RAM or more).
 #
-#   curl -fsSL https://raw.githubusercontent.com/rafaorlando3/iris-relay/main/scripts/demo-install.sh | sudo bash -s -- <git ref>
+# Run this script from the reviewed checkout, passing its full 40-character commit SHA.
 #
 # What it does: installs Docker from Ubuntu's own packages, checks out this repository in
 # /opt/iris-relay, generates the shared demo password (kept in /opt/iris-relay/.env, 0600),
@@ -10,13 +10,15 @@
 # Never run it on a server that hosts anything else: the demo is a public admin tool.
 set -euo pipefail
 
-REF="${1:-main}"
+REF="${1:-}"
 REPO="${IRIS_RELAY_REPO:-https://github.com/rafaorlando3/iris-relay.git}"  # override only for rehearsals
 DIR="/opt/iris-relay"
 COMPOSE=(docker compose -f compose.yaml -f compose.demo.yaml)
 
 fail() { echo "IRIS Relay demo install failed: $*" >&2; exit 1; }
 step() { echo "==> $*"; }
+
+[[ "$REF" =~ ^[a-fA-F0-9]{40}$ ]] || fail "pass the full reviewed 40-character commit SHA."
 
 [ "$(id -u)" = 0 ] || fail "run it as root (sudo)."
 . /etc/os-release
@@ -62,7 +64,7 @@ ufw allow 443/tcp >/dev/null
 ufw --force enable >/dev/null
 
 step "Starting IRIS, Relay and Caddy"
-"${COMPOSE[@]}" up -d
+"${COMPOSE[@]}" up -d --force-recreate
 
 step "Hourly reset to a clean lab"
 cat > /etc/systemd/system/iris-relay-demo-reset.service <<UNIT

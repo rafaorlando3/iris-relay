@@ -17,6 +17,7 @@ import math
 import os
 import re
 import stat
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 DIMS = 256
@@ -28,6 +29,16 @@ MAX_RESULTS = 50
 CANDIDATES = 200  # closest lines ranked by IRIS before grouping repeats
 LINE = re.compile(r'^(\d+/\d+/\d+-[\d:]+)\s+\((\d+)\)\s+(\d+)\s+(.*)$')
 WORD = re.compile(r'[a-z0-9_%$]+(?:\.[a-z0-9_%$]+)*')  # dotted names such as Utility.Event stay one word
+INDEX_STORED = ('SELECT %EXACT(Source), %EXACT(FileKey), COUNT(*) FROM Relay.LogLine '
+                'GROUP BY %EXACT(Source), %EXACT(FileKey)')
+INDEX_DELETE = 'DELETE FROM Relay.LogLine WHERE Source = ?'
+INDEX_INSERT = ('INSERT INTO Relay.LogLine (Source, FileKey, LineNo, LineTime, LineLevel, Message, Embedding) '
+                'VALUES (?, ?, ?, ?, ?, ?, TO_VECTOR(?, DOUBLE))')
+INDEX_TOTAL = 'SELECT COUNT(*) FROM Relay.LogLine'
+INDEX_FILES = 'SELECT COUNT(DISTINCT Source) FROM Relay.LogLine'
+SEARCH_LINES = ('SELECT TOP %d Source, LineNo, LineTime, LineLevel, Message, '
+                'VECTOR_COSINE(Embedding, TO_VECTOR(?, DOUBLE)) AS Score '
+                'FROM Relay.LogLine ORDER BY Score DESC' % CANDIDATES)
 
 
 def _bucket(feature):
@@ -112,13 +123,61 @@ def sources(directory, log_reader):
     return [s for s in listed if s['available']]
 
 
+@contextmanager
+def index_access(runtime, write=False):
+    """Coordinate IRIS processes; readers never observe a partial replacement."""
+    if runtime.tlevel():
+        raise ValueError('Log index operations require a standalone transaction.')
+    locks = ['^Relay.LogIndexLock']
+    args = (locks, 0) if write else (locks, 5, 'S')
+    if not runtime.lock(*args):
+        raise ValueError('Log index is being updated. Try again shortly.')
+    started = False
+    try:
+        if write:
+            runtime.tstart()
+            started = True
+        try:
+            yield
+            if write:
+                runtime.tcommit()
+                started = False
+        except BaseException:
+            if started and runtime.tlevel():
+                runtime.trollbackone()
+            raise
+    finally:
+        runtime.unlock(*args)
+
+
+def refresh_iris(directory, log_reader, runtime, execute=None):
+    if runtime.tlevel():
+        raise ValueError('Log index operations require a standalone transaction.')
+    # Compile cached SQL outside the data transaction, including on the first run
+    # after class installation. Rolling back query compilation can invalidate it.
+    statements = {query: runtime.sql.prepare(query) for query in
+                  (INDEX_STORED, INDEX_DELETE, INDEX_INSERT, INDEX_TOTAL, INDEX_FILES)}
+    prepared = lambda query, *params: statements[query].execute(*params)
+    with index_access(runtime, write=True):
+        return refresh(directory, log_reader, execute or prepared)
+
+
+def search_iris(query, limit, runtime):
+    if runtime.tlevel():
+        raise ValueError('Log index operations require a standalone transaction.')
+    statements = {sql: runtime.sql.prepare(sql) for sql in (INDEX_TOTAL, SEARCH_LINES)}
+    with index_access(runtime):
+        return search(query, limit, lambda sql, *params: statements[sql].execute(*params))
+
+
 def refresh(directory, log_reader, execute):
     """Bring Relay.LogLine up to date. Unchanged files are skipped; changed files are replaced."""
     def sql(query, *params):
         return _sql(execute, query, *params)
     stored = {}
-    for source, key in sql('SELECT DISTINCT %EXACT(Source), %EXACT(FileKey) FROM Relay.LogLine'):
-        stored[source] = key
+    for source, key, count in sql(INDEX_STORED):
+        # Also repair partial/duplicated indexes left by older versions.
+        stored[source] = None if source in stored else (key, count)
     budget, indexed, skipped, problems, seen = MAX_LINES_TOTAL, 0, 0, [], set()
     for source in sources(directory, log_reader):
         if budget <= 0:
@@ -129,26 +188,26 @@ def refresh(directory, log_reader, execute):
         try:
             key, rows = tail_lines(path)
         except (OSError, ValueError) as error:
+            sql(INDEX_DELETE, name)  # stale rows must not escape the current line budget
             problems.append({'source': name, 'status': 'Not indexed: ' + str(error)})
             continue
         rows = rows[-budget:]
-        if stored.get(name) == key + ':%d' % len(rows):
+        if stored.get(name) == (key + ':%d' % len(rows), len(rows)):
             budget -= len(rows)
             skipped += 1
             continue
-        sql('DELETE FROM Relay.LogLine WHERE Source = ?', name)
+        sql(INDEX_DELETE, name)
         file_key = key + ':%d' % len(rows)
         for number, row in enumerate(rows):
-            sql('INSERT INTO Relay.LogLine (Source, FileKey, LineNo, LineTime, LineLevel, Message, Embedding) '
-                'VALUES (?, ?, ?, ?, ?, ?, TO_VECTOR(?, DOUBLE))',
+            sql(INDEX_INSERT,
                 name, file_key, number, row['Time'], row['Level'], row['Message'], vector_text(embed(row['Message'])))
         indexed += len(rows)
         budget -= len(rows)
     for name in stored:
         if name not in seen:
-            sql('DELETE FROM Relay.LogLine WHERE Source = ?', name)  # file rotated away or removed
-    total = next(iter(sql('SELECT COUNT(*) FROM Relay.LogLine')))[0]
-    files = next(iter(sql('SELECT COUNT(DISTINCT Source) FROM Relay.LogLine')))[0]
+            sql(INDEX_DELETE, name)  # file rotated away or removed
+    total = next(iter(sql(INDEX_TOTAL)))[0]
+    files = next(iter(sql(INDEX_FILES)))[0]
     return {'indexedLines': indexed, 'unchangedFiles': skipped, 'totalLines': total, 'files': files,
             'limits': {'bytesPerFile': MAX_BYTES_PER_FILE, 'linesPerFile': MAX_LINES_PER_FILE, 'linesTotal': MAX_LINES_TOTAL},
             'problems': problems, 'observedAt': datetime.now(timezone.utc).isoformat()}
@@ -170,10 +229,7 @@ def search(query, limit, execute):
     # Rank the closest lines in IRIS, then group repeats of the same message pattern
     # (digits folded) so one result shows how often and where it occurred.
     groups = {}
-    for source, number, when, level, message, score in sql(
-            'SELECT TOP %d Source, LineNo, LineTime, LineLevel, Message, '
-            'VECTOR_COSINE(Embedding, TO_VECTOR(?, DOUBLE)) AS Score '
-            'FROM Relay.LogLine ORDER BY Score DESC' % CANDIDATES, vector_text(vector)):
+    for source, number, when, level, message, score in sql(SEARCH_LINES, vector_text(vector)):
         if float(score) <= 0:
             continue  # nothing in common with the query
         message = message or ''

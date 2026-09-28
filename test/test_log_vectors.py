@@ -2,6 +2,7 @@ import importlib.util
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1] / 'src/Relay'
@@ -20,8 +21,9 @@ class FakeSQL:
     def __init__(self):
         self.rows, self.inserts = [], 0
     def __call__(self, query, *params):
-        if query.startswith('SELECT DISTINCT'):
-            return sorted({(r[0], r[1]) for r in self.rows})
+        if query.startswith('SELECT %EXACT'):
+            keys = sorted({(r[0], r[1]) for r in self.rows})
+            return [(source, key, sum(r[0] == source and r[1] == key for r in self.rows)) for source, key in keys]
         if query.startswith('DELETE'):
             before = len(self.rows); self.rows = [r for r in self.rows if r[0] != params[0]]
             if before == len(self.rows):
@@ -92,6 +94,28 @@ class Index(unittest.TestCase):
         self.assertNotIn('messages.old_20260101', {r[0] for r in sql.rows})
         self.assertEqual(sum(1 for r in sql.rows if r[0] == 'messages.old_20260926'), vectors.MAX_LINES_PER_FILE)
         self.assertLessEqual(result['totalLines'], vectors.MAX_LINES_TOTAL)
+
+    def test_partial_or_duplicated_old_index_is_repaired(self):
+        sql = FakeSQL()
+        vectors.refresh(self.dir, reader, sql)
+        sql.rows.pop(0)
+        self.assertEqual(vectors.refresh(self.dir, reader, sql)['totalLines'], 43)
+        sql.rows.append(sql.rows[0])
+        self.assertEqual(vectors.refresh(self.dir, reader, sql)['totalLines'], 43)
+
+    def test_unreadable_source_drops_stale_rows_and_reports_problem(self):
+        sql = FakeSQL()
+        vectors.refresh(self.dir, reader, sql)
+        original = vectors.tail_lines
+        def changed(path):
+            if Path(path).name == 'messages.log':
+                raise ValueError('changed while reading')
+            return original(path)
+        with patch.object(vectors, 'tail_lines', side_effect=changed):
+            result = vectors.refresh(self.dir, reader, sql)
+        self.assertEqual(result['totalLines'], 3)
+        self.assertEqual(result['problems'][0]['source'], 'messages.log')
+        self.assertTrue(all(r[0] == 'messages.old_20260927' for r in sql.rows))
 
     def test_same_size_same_timestamp_rewrite_reindexes_content(self):
         sql = FakeSQL()

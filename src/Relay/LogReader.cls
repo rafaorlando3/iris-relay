@@ -26,7 +26,7 @@ ClassMethod IndexLogs(directory As %String) As %String [ Language = python ]
     reader = load("log_reader")
     vectors = load("log_vectors")
     try:
-        return json.dumps(vectors.refresh(directory, reader, lambda q, *p: iris.sql.exec(q, *p)))
+        return json.dumps(vectors.refresh_iris(directory, reader, iris))
     except Exception as error:
         return json.dumps({"error": "Log index update failed: " + (str(error) or type(error).__name__)[:300]})
 }
@@ -42,7 +42,7 @@ ClassMethod SearchLogs(directory As %String, query As %String, limit As %Integer
     vectors = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(vectors)
     try:
-        return json.dumps(vectors.search(query, limit, lambda q, *p: iris.sql.exec(q, *p)))
+        return json.dumps(vectors.search_iris(query, limit, iris))
     except Exception as error:
         return json.dumps({"error": "Log search failed: " + (str(error) or type(error).__name__)[:300]})
 }

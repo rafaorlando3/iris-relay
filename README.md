@@ -113,8 +113,8 @@ Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose
 ## Validation
 
 ```sh
-npm test            # 44 JavaScript tests
-npm run test:logs   # 21 Python tests (log reader, similarity index, lab helper)
+npm test            # 46 JavaScript tests
+npm run test:logs   # 26 Python tests (log reader, similarity index, lab helper)
 ```
 
 With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). See [docs/VALIDATION.md](docs/VALIDATION.md).

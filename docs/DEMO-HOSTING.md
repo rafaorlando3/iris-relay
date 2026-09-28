@@ -16,10 +16,11 @@ The public demo is a disposable IRIS 2026.2 lab behind Relay, on a dedicated sma
 On a fresh Ubuntu 24.04 server with 2 GB of RAM or more (4 GB recommended), as root:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rafaorlando3/iris-relay/main/scripts/demo-install.sh | bash -s -- main
+commit=PUT_THE_FULL_REVIEWED_COMMIT_SHA_HERE
+curl -fsSL "https://raw.githubusercontent.com/rafaorlando3/iris-relay/$commit/scripts/demo-install.sh" | bash -s -- "$commit"
 ```
 
-It installs `docker.io`, `docker-compose-v2`, `git` and `ufw` from Ubuntu's packages, checks out the repository in `/opt/iris-relay`, writes `/opt/iris-relay/.env` (0600) with the host name and a generated demo password, starts the stack and the reset timer, and prints the demo address. Re-running it updates the checkout and keeps the password.
+Use the full 40-character reviewed commit SHA in both places; the installer refuses an omitted ref, branch name or abbreviated SHA. It installs `docker.io`, `docker-compose-v2`, `git` and `ufw` from Ubuntu's packages, checks out the repository in `/opt/iris-relay`, writes `/opt/iris-relay/.env` (0600) with the host name and a generated demo password, starts the stack and the reset timer, and prints the demo address. Re-running it updates the checkout, recreates the containers to load the new classes and code, and keeps the shared password and certificate volume. The disposable lab and visitor sessions are reset during that update.
 
 ## Check
 
