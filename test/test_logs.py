@@ -1,4 +1,6 @@
 import importlib.util
+import base64
+import json
 import os
 import tempfile
 import unittest
@@ -15,6 +17,15 @@ class LogTests(unittest.TestCase):
   self.assertFalse(cursor);self.assertEqual([v for page in pages for v in page],[f'entry {i}' for i in range(1000)])
  def test_append_rotation_and_invalid_cursor_require_refresh(self):
   self.path.write_text('a\n'*200);cursor=logs.page(self.root)['nextCursor'];self.path.write_text('b\n'*200);self.assertIn('error',logs.page(self.root,'runtime',cursor));self.assertIn('error',logs.page(self.root,'runtime','bad!'))
+ def test_same_stat_rewrite_rejects_old_cursor(self):
+  self.path.write_text('a\n'*200);before=self.path.stat();cursor=logs.page(self.root)['nextCursor']
+  self.path.write_text('b\n'*200);os.utime(self.path,ns=(before.st_atime_ns,before.st_mtime_ns))
+  self.assertIn('error',logs.page(self.root,'runtime',cursor))
+  latest=logs.page(self.root);self.assertEqual(latest['rows'][0]['Message'],'b')
+  older=logs.page(self.root,'runtime',latest['nextCursor']);self.assertNotIn('error',older);self.assertEqual(len(older['rows']),50)
+ def test_cursor_without_content_guard_requires_refresh(self):
+  self.path.write_text('a\n'*200);cursor=logs.page(self.root)['nextCursor'];old=json.loads(base64.urlsafe_b64decode(cursor));old.pop('fingerprint')
+  self.assertIn('error',logs.page(self.root,'runtime',base64.urlsafe_b64encode(json.dumps(old).encode()).decode()))
  def test_missing_sources_are_unavailable_not_zero_and_paths_are_rejected(self):
   self.assertTrue(all(not r['available'] and r['bytes'] is None for r in logs.catalog(self.root)['sources']));self.assertIn('error',logs.page(self.root,'../private'));self.assertIn('error',logs.page(self.root,'runtime'))
  def test_symlinks_are_not_followed(self):

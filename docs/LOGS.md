@@ -14,7 +14,7 @@ Relay 0.2 added a text-log investigation workspace, alongside the existing async
 | Task history | Management API; up to 100 returned rows | Permissions and errors remain visible |
 | Journal | File inventory only | Binary journal contents are not parsed |
 
-The text reader is Embedded Python executed inside IRIS. Each page reads at most 64 KiB and returns at most 150 complete lines in chronological order. Older records uses a cursor tied to source, device, inode, size and modification time. If the file changes, including append or rotation, reload the latest page rather than mixing snapshots. A concurrent modification during the read also fails visibly.
+The text reader is Embedded Python executed inside IRIS. Each page extracts at most 64 KiB and returns at most 150 complete lines in chronological order. Older records use a cursor tied to source, device, inode, size, modification time and a digest of the requested window. Detected append, rotation or content changes require loading the latest page again. The bounded content checks and their limits are described below.
 
 ## Archived rotations (0.3)
 
@@ -39,3 +39,17 @@ The browser supplies a source ID, never a file path. Symbolic links and nonregul
 This is not universal coverage of every subsystem. Custom application paths, compressed rotations, Windows Event Log, journal record decoding and interoperability message bodies are not included. Manager-directory Linux instances are supported; IRIS 2026.2 was exercised on ARM64 and x86-64 containers. Free-text logs may contain sensitive information: review any export before sharing it.
 
 Run `npm run test:logs` for paging, consistency, traversal, symlink, absence and size-bound checks.
+## Content consistency
+
+Cursor metadata is supplemented with a SHA-256 digest of the next page's bounded
+read window. A same-size rewrite with an unchanged filesystem timestamp therefore
+requires a refresh when that window changes. Each response reads at most three
+64 KiB windows (the page, its next-page guard, and a consistency reread); the
+returned page remains limited to 64 KiB and 150 complete lines. Older cursors
+without a content digest also require a refresh. This guards the requested window,
+not a durable snapshot of an entire file. Changes outside the guarded window are
+detected by normal inode/size/timestamp checks when the filesystem reports them.
+
+The similarity index fingerprints the full bounded tail it reads (at most 1 MiB
+per file) and verifies it with a reread. Its incremental cache cannot mistake a
+same-size, same-timestamp rewrite of that tail for unchanged content.

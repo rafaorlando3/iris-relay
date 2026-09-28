@@ -93,6 +93,18 @@ class Index(unittest.TestCase):
         self.assertEqual(sum(1 for r in sql.rows if r[0] == 'messages.old_20260926'), vectors.MAX_LINES_PER_FILE)
         self.assertLessEqual(result['totalLines'], vectors.MAX_LINES_TOTAL)
 
+    def test_same_size_same_timestamp_rewrite_reindexes_content(self):
+        sql = FakeSQL()
+        vectors.refresh(self.dir, reader, sql)
+        path = self.dir / 'messages.log'
+        before = path.stat()
+        path.write_text(path.read_text().replace('Current', 'Changed'))
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        self.assertEqual(path.stat().st_size, before.st_size)
+        result = vectors.refresh(self.dir, reader, sql)
+        self.assertEqual(result['indexedLines'], 40)
+        self.assertTrue(all('Changed' in r[5] for r in sql.rows if r[0] == 'messages.log'))
+
     def test_search_groups_repeats_and_validates_input(self):
         sql = FakeSQL()
         vectors.refresh(self.dir, reader, sql)

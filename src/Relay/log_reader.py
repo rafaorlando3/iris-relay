@@ -1,5 +1,6 @@
 """Bounded, allowlisted IRIS text logs. Called by Embedded Python in Relay.LogReader."""
 import base64
+import hashlib
 import json
 import os
 import re
@@ -106,8 +107,12 @@ def page(directory, source='runtime', cursor=''):
                 except (ValueError, KeyError, TypeError):
                     return error('Invalid log cursor.')
             start = max(0, end - BYTE_LIMIT)
+            window_start, window_end = start, end
             stream.seek(start)
             raw = stream.read(end-start)
+            page_digest = hashlib.sha256(raw).hexdigest()
+            if cursor and c.get('fingerprint') != page_digest:
+                return error('Log content changed. Load latest before reading older records.')
             truncated_line = False
             if start:
                 cut = raw.find(b'\n')
@@ -136,10 +141,20 @@ def page(directory, source='runtime', cursor=''):
                     row.update(Time=stamp, Pid=int(pid), Level=int(level), Message=message[:2000], MessageTruncated=len(message)>2000)
                 rows.append(row)
             # Do not present a changed file as a consistent page.
+            # Filesystems can coalesce timestamps for fast same-size rewrites.
+            # Guard the next bounded window, not only the inode/stat metadata.
+            next_digest = None
+            if offset > 0:
+                next_start = max(0, offset - BYTE_LIMIT)
+                stream.seek(next_start)
+                next_digest = hashlib.sha256(stream.read(offset-next_start)).hexdigest()
+            stream.seek(window_start)
+            if hashlib.sha256(stream.read(window_end-window_start)).hexdigest() != page_digest:
+                return error('Log changed while reading. Load latest again.')
             final = os.fstat(stream.fileno())
             if [final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns] != identity:
                 return error('Log changed while reading. Load latest again.')
-        next_cursor = base64.urlsafe_b64encode(json.dumps({'source':source, 'identity':identity, 'offset':offset}).encode()).decode() if offset > 0 else None
+        next_cursor = base64.urlsafe_b64encode(json.dumps({'source':source, 'identity':identity, 'offset':offset, 'fingerprint':next_digest}).encode()).decode() if offset > 0 else None
         return {'source':name, 'observedAt':datetime.now(timezone.utc).isoformat(), 'byteLimit':BYTE_LIMIT, 'lineLimit':LINE_LIMIT, 'truncated':offset>0, 'longLineSkipped':truncated_line, 'nextCursor':next_cursor, 'rows':rows}
     except FileNotFoundError:
         return error('Log source is not present in this instance.')

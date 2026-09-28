@@ -69,6 +69,7 @@ def tail_lines(path):
         start = max(0, info.st_size - MAX_BYTES_PER_FILE)
         stream.seek(start)
         raw = stream.read(info.st_size - start)
+        content_digest = hashlib.sha256(raw).hexdigest()
         if start:
             cut = raw.find(b'\n')
             raw = raw[cut + 1:] if cut >= 0 else b''
@@ -77,6 +78,9 @@ def tail_lines(path):
             lines.pop()  # a live writer may still be writing the last line
         final = os.fstat(stream.fileno())
         if _identity(final) != _identity(info):
+            raise ValueError('changed while reading')
+        stream.seek(start)
+        if hashlib.sha256(stream.read(info.st_size - start)).hexdigest() != content_digest:
             raise ValueError('changed while reading')
     rows = []
     for line in lines[-MAX_LINES_PER_FILE:]:
@@ -89,7 +93,7 @@ def tail_lines(path):
             stamp, pid, level, message = match.groups()
             row.update(Time=stamp, Pid=int(pid), Level=int(level), Message=message[:2000])
         rows.append(row)
-    return _identity(info), rows
+    return _identity(info) + ':' + content_digest, rows
 
 
 def _sql(execute, query, *params):
