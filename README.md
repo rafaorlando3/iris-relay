@@ -45,6 +45,16 @@ Both paths run the same `scripts/bootstrap.py` inside the container. Stop with C
 
 Suggested 5-minute tour: Scheduled tasks → Capture baseline → Suspend `Relay demonstration task` → Confirm → Compare changes → Resume it. Then open Log investigation and pick an archived `messages.old_*` file (with the lab script, run `python3 scripts/lab-rotate-log.py` first to create one). Finish with Export handover. The full reviewer script is in [docs/DEMO.md](docs/DEMO.md).
 
+## Install the IRIS side on an existing instance (IPM)
+
+The IRIS part of Relay (the `/api/relay` endpoints, the Embedded Python log reader for current and archived `messages.log` files and the similarity search table) is an IPM package. It creates no users and no demo data.
+
+```
+USER> zpm "install iris-relay"
+```
+
+Before it appears in the public registry, or to try a local checkout: `zpm "load /path/to/iris-relay"`. It installs `Relay.Api`, `Relay.LogReader` and `Relay.LogLine` in the current namespace, copies `log_reader.py` and `log_vectors.py` to `<manager directory>/relay/`, and creates the `/api/relay` web application with password authentication; every endpoint also checks `%Admin_Operate:U`. Then point the Relay UI at that instance: `IRIS_URL=https://your-test-instance.example npm start` (HTTPS is required for anything but loopback). `zpm "uninstall iris-relay"` removes it.
+
 ## What you can do
 
 | Contest area | In IRIS Relay |
@@ -98,7 +108,7 @@ flowchart LR
 
 ## Technology used
 
-Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose` lab), Embedded Python (log reader and embeddings running inside IRIS), IRIS Vector Search (`VECTOR` column and `VECTOR_COSINE`), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. There is no IPM package or hosted live demo yet; the GitHub Pages walkthrough is a static page with fictional data.
+Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose` lab), Embedded Python (log reader and embeddings running inside IRIS), IRIS Vector Search (`VECTOR` column and `VECTOR_COSINE`), an IPM package for the IRIS side (`module.xml`), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. There is no hosted live demo yet; the GitHub Pages walkthrough is a static page with fictional data.
 
 ## Validation
 

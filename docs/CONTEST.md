@@ -19,10 +19,11 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 | --- | --- |
 | Docker | `docker compose up -d` (IRIS + Relay, one command) and `scripts/lab.py`, both on the pinned official IRIS Community 2026.2 image |
 | Embedded Python | `Relay.LogReader` runs `src/Relay/log_reader.py` and `log_vectors.py` inside IRIS |
+| IPM package | `module.xml`: `zpm "install iris-relay"` installs the IRIS side (`/api/relay`, log reader, similarity search table); the UI runs with compose or Node |
 | Vector search | `Relay.LogLine` stores `VECTOR(DOUBLE, 256)` embeddings of log lines; similarity search ranks them with `VECTOR_COSINE` ([details](LOGS.md)) |
 | Community Opportunity idea | [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966), archived `messages.old_*` logs, in 0.3.0 ([details](LOGS.md)) |
 | YouTube video | Demo recorded on the real lab (link in README once published) |
 | Article | Developer Community article (link in README once published) |
 | First contribution | First Open Exchange contest for the author |
 
-Not provided yet: IPM package, hosted live demo (the GitHub Pages walkthrough is static and fictional). Not provided: Embedded Python bug report.
+Not provided yet: hosted live demo (the GitHub Pages walkthrough is static and fictional). Not provided: Embedded Python bug report.

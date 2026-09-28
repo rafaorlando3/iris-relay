@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="Cache" version="25">
+  <Document name="iris-relay.ZPM">
+    <Module>
+      <Name>iris-relay</Name>
+      <Version>0.4.0</Version>
+      <Description>IRIS side of IRIS Relay: REST endpoints under /api/relay with a bounded Embedded Python reader for current and archived messages.log files (idea DPI-I-966) and similarity search across them with IRIS Vector Search. The Relay web UI runs with docker compose or Node; see the README.</Description>
+      <Keywords>management portal,logs,vector search,embedded python,operations</Keywords>
+      <Packaging>module</Packaging>
+      <SourcesRoot>src</SourcesRoot>
+      <Resource Name="Relay.LogLine.CLS"/>
+      <Resource Name="Relay.LogReader.CLS"/>
+      <Resource Name="Relay.Api.CLS"/>
+      <FileCopy Name="src/Relay/log_reader.py" Target="${mgrdir}relay/log_reader.py"/>
+      <FileCopy Name="src/Relay/log_vectors.py" Target="${mgrdir}relay/log_vectors.py"/>
+      <WebApplication
+        Url="/api/relay"
+        DispatchClass="Relay.Api"
+        Description="IRIS Relay log reader and similarity search (requires %Admin_Operate:U)"
+        AutheEnabled="32"
+        Recurse="1"/>
+    </Module>
+  </Document>
+</Export>
