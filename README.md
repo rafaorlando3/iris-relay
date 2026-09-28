@@ -6,7 +6,8 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 
 ![IRIS Relay: a reviewed task change, applied and verified in IRIS](docs/images/review-verified.png)
 
-* **Video demo (2:38):** https://youtu.be/i_EW6gS3EJg
+* **0.4 guided tour (1:34):** https://youtu.be/A5OkIV2Q3xA
+* **0.3 walkthrough (2:38):** https://youtu.be/i_EW6gS3EJg
 * **Open Exchange:** https://openexchange.intersystems.com/package/IRIS-Relay
 * **Live IRIS demo:** https://78-17-93-244.sslip.io (shared login shown on the page; disposable lab reset hourly; use synthetic data only). A 5-step guided tour walks through a labelled, simulated incident: find it in the current and archived logs with the similarity search, capture a baseline, suspend the failing task with review, then compare and hand over.
 * **No-install walkthrough (fictional data, no IRIS):** https://rafaorlando3.github.io/iris-relay/
@@ -115,7 +116,7 @@ Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose
 
 ```sh
 npm test            # 46 JavaScript tests
-npm run test:logs   # 26 Python tests (log reader, similarity index, lab helper)
+npm run test:logs   # 29 Python tests (log reader, similarity index, lab helper, demo incident)
 ```
 
 With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). See [docs/VALIDATION.md](docs/VALIDATION.md).

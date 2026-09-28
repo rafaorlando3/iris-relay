@@ -1,5 +1,11 @@
 # Validation record
 
+## Public guided tour deployment, September 28, 2026
+
+The reviewed tour a7dd7f3 was integrated with b206455, which keeps the suggested handover note neutral when the visitor skips or cancels the task change, checks that the review dialog opened, and refuses comparison after a failed task reload. On the dedicated demo VPS, 29 Python and 46 JavaScript tests passed. The public HTTPS visitor check passed **60/60** with `allPassed: true` after deploying full SHA `b206455c1d5d9f9cbd56d22efb939c65eefaf6c1`. No project or tests were run on the Mac.
+
+The new [0.4 video](https://youtu.be/A5OkIV2Q3xA) is a recording of the earlier a7dd7f3 rehearsal; the deployed suggested note includes the review correction above. The original 0.3 walkthrough remains linked. IPM source and version are unchanged.
+
 ## Guided tour for the public demo, September 28, 2026
 
 Change: the public demo shows a 5-step guided tour after sign-in, over a labelled,
