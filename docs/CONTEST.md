@@ -22,8 +22,8 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 | IPM package | `module.xml`: `zpm "install iris-relay"` installs the IRIS side (`/api/relay`, log reader, similarity search table); the UI runs with compose or Node |
 | Vector search | `Relay.LogLine` stores `VECTOR(DOUBLE, 256)` embeddings of log lines; similarity search ranks them with `VECTOR_COSINE` ([details](LOGS.md)) |
 | Community Opportunity idea | [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966), archived `messages.old_*` logs, in 0.3.0 ([details](LOGS.md)) |
-| YouTube video | Demo recorded on the real lab (link in README once published) |
-| Article | Developer Community article (link in README once published) |
+| YouTube video | [Demo recorded on the real lab](https://youtu.be/i_EW6gS3EJg) |
+| Article | [Developer Community article](https://community.intersystems.com/post/iris-relay-consistency-and-safety-during-shift-handovers), with linked Portuguese and Spanish translations |
 | First contribution | First Open Exchange contest for the author |
 
-Online demo: ready to host with `scripts/demo-install.sh` ([DEMO-HOSTING.md](DEMO-HOSTING.md)); the address is added to the README once it is running. The GitHub Pages walkthrough is static and fictional. Not provided: Embedded Python bug report.
+Online demo: [real disposable IRIS lab](https://78-17-93-244.sslip.io), shared login shown on the page, reset hourly. Deployed and verified on a dedicated Ubuntu VPS ([DEMO-HOSTING.md](DEMO-HOSTING.md)). The separate GitHub Pages walkthrough is static and fictional. Not provided: Embedded Python bug report.

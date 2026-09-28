@@ -8,6 +8,7 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 
 * **Video demo (2:38):** https://youtu.be/i_EW6gS3EJg
 * **Open Exchange:** https://openexchange.intersystems.com/package/IRIS-Relay
+* **Live IRIS demo:** https://78-17-93-244.sslip.io — shared login shown on the page; disposable lab reset hourly. Use synthetic data only.
 * **No-install walkthrough (fictional data, no IRIS):** https://rafaorlando3.github.io/iris-relay/
 * **Community Opportunity idea implemented:** [DPI-I-966, "Option to show older message.log in IRIS SMP"](https://ideas.intersystems.com/ideas/DPI-I-966)
 
@@ -108,7 +109,7 @@ flowchart LR
 
 ## Technology used
 
-Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose` lab), Embedded Python (log reader and embeddings running inside IRIS), IRIS Vector Search (`VECTOR` column and `VECTOR_COSINE`), an IPM package for the IRIS side (`module.xml`), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. There is no hosted live demo yet; the GitHub Pages walkthrough is a static page with fictional data.
+Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose` lab), Embedded Python (log reader and embeddings running inside IRIS), IRIS Vector Search (`VECTOR` column and `VECTOR_COSINE`), an IPM package for the IRIS side (`module.xml`), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. The live demo runs a real disposable IRIS instance; the separate GitHub Pages walkthrough uses fictional data.
 
 ## Validation
 

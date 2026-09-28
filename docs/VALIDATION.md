@@ -20,7 +20,16 @@ concurrent index replacement, and upgrades that did not recreate IRIS.
 * The original staging deployment passed 46 JavaScript tests and all 57 public
   demo checks through real HTTPS. Only SSH, HTTP and HTTPS were exposed; IRIS had
   no published port and Relay was bound to loopback. The hourly reset timer was
-  active. Final deployment results are recorded separately below when complete.
+  active.
+* Reviewed application commit `6763412560e4237755458a9c6c6031688e35d0e7` was
+  published to GitHub and installed with the GitHub origin and that fixed SHA.
+  All 57 HTTPS visitor checks passed again; 46 JavaScript tests passed. External
+  HTTPS returned 200 with a valid certificate in 0.73 seconds in one observation.
+  After verification, observed memory was IRIS 496 MiB, Relay 16 MiB and Caddy
+  12 MiB. These are point observations, not a load or availability guarantee.
+* The dedicated server accepts SSH keys only. Its firewall exposes only 22, 80
+  and 443; external access to 8787 timed out and IRIS has no published port.
+  The separate synthetic-data review container was removed after its checks.
 
 For the isolated IRIS regression, enable `%Service_CallIn` only in the disposable
 test container, then run its `irispython` with `RELAY_DISPOSABLE_REVIEW=1`, first
@@ -97,7 +106,7 @@ No acceptance, prize, awarded bonus points or income is inferred from these chec
 
 No acceptance, prize, awarded bonus points or income is inferred from these checks.
 
-## Version 0.4 (in progress), September 28, 2026
+## Version 0.4 implementation evidence, September 28, 2026 (before final review)
 
 * One-command lab: `docker compose up -d` started the pinned IRIS image and Relay (node:22-alpine) in about 11 seconds on x86-64. `scripts/bootstrap.py` ran inside the IRIS container through `iris-main --after`, created the lab accounts with generated passwords (credentials file 0600 inside the container), the Relay extension and every fixture. Relay started only after the health check. `verify-management.py` and `verify-enhancements.py` passed against the compose lab, using the credentials read with `docker compose exec`.
 * `docker compose restart iris` re-ran the idempotent bootstrap with the same credentials and restarted Relay with it (Relay shares the IRIS network namespace, so it follows IRIS restarts); login worked afterwards.
