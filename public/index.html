@@ -61,6 +61,25 @@
           <strong>PUBLIC DEMO · SHARED ACCOUNT</strong>
           <p id="public-demo-note"></p>
         </div>
+        <section id="tour" class="tour" hidden aria-labelledby="tour-title">
+          <div class="tour-head">
+            <div>
+              <strong id="tour-title">GUIDED TOUR · 5 STEPS · ABOUT 3 MINUTES</strong>
+              <p>
+                Simulated incident: yesterday's shift saw license limit refusals
+                and a failing demo task, and it is still happening. You take
+                over: find it in every log, record where things stand, make one
+                reviewed change and hand over. Every incident line is labelled
+                [Relay demo incident].
+              </p>
+            </div>
+            <button id="tour-toggle" type="button" aria-expanded="true" aria-controls="tour-steps">
+              Hide tour
+            </button>
+          </div>
+          <ol id="tour-steps"></ol>
+          <p id="tour-status" role="status" aria-live="polite"></p>
+        </section>
         <div id="demo-banner" class="demo-banner" hidden>
           <strong>INTERACTIVE WALKTHROUGH · FICTIONAL DATA</strong>
           <p>

@@ -9,6 +9,7 @@ The public demo is a disposable IRIS 2026.2 lab behind Relay, on a dedicated sma
 * **One account, limited targets.** With `RELAY_DEMO=1` Relay accepts only the shared account (`RelayDemoOperator`, roles `%Manager`, no `%All`) and refuses, before contacting IRIS, any change that is not one of the Relay demonstration objects: the `Relay demonstration task`, `/relay-demo`, `RelayDemoUser`, `RelayDemoRole`, the `RelayDemo` wallet collection, `RelayDemoCertificate`, `RelayDemoOAuth` and `RelayDemoTLS`. The explorer stays read-only and allowlisted.
 * **Bounded state.** At most 500 sessions (oldest dropped first); sign-in throttling is per client address as seen by Caddy (the proxy-appended `X-Forwarded-For` entry, never a client-supplied one).
 * **Hourly reset.** A systemd timer recreates the IRIS and Relay containers every hour: a clean lab, the same public demo password, new random passwords for the lab's `%All` account (never shown).
+* **Guided tour.** The demo bootstrap (`--demo-account`) plants a simulated incident for a 5-step tour shown after sign-in: a synthetic archived rotation `messages.old_<yesterday>` and three lines in the live `messages.log`, written through IRIS. Every line is labelled `[Relay demo incident]` or `[Relay demo archive]` and says it is simulated; an existing rotation with the same name is never replaced. It runs once per container, so the hourly reset recreates it.
 * **HTTPS.** Caddy obtains a certificate automatically for `<ip>.sslip.io` (or `DEMO_HOST` if you point your own DNS name at the server).
 
 ## Install
@@ -28,7 +29,7 @@ Use the full 40-character reviewed commit SHA in both places; the installer refu
 python3 /opt/iris-relay/scripts/verify-demo.py https://<demo host>
 ```
 
-57 checks as a visitor: demo mode advertised, other accounts refused, refusals for non-demo objects (including `_SYSTEM`, the demo account itself, `/csp/sys`, `/api/admin`, `%SuperServer`, `%Developer` and system tasks), every demo change applied, verified and restored, logs, similarity index and search, audit query and explorer.
+60 checks as a visitor: demo mode advertised, other accounts refused, refusals for non-demo objects (including `_SYSTEM`, the demo account itself, `/csp/sys`, `/api/admin`, `%SuperServer`, `%Developer` and system tasks), every demo change applied, verified and restored, logs, similarity index and search, the guided tour incident (archived rotation listed and readable, found by the similarity search in the current and archived logs), audit query and explorer.
 
 ## Stop
 

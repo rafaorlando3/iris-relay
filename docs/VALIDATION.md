@@ -1,5 +1,30 @@
 # Validation record
 
+## Guided tour for the public demo, September 28, 2026
+
+Change: the public demo shows a 5-step guided tour after sign-in, over a labelled,
+simulated incident planted by the demo bootstrap (a synthetic archived rotation
+`messages.old_<yesterday>` and three lines written to the live `messages.log`
+through IRIS). No IRIS class, API route or permission changed.
+
+* Local rehearsal of the public demo stack (`compose.yaml` + `compose.demo.yaml`,
+  Caddy with HTTPS on `localhost`, IRIS Community 2026.2 container):
+  `scripts/verify-demo.py` passed 60 checks as a visitor, 57 before plus 3 new ones
+  for the tour incident. Checked after a fresh container and again after a container
+  restart; the restart did not duplicate the incident lines (3 in `messages.log`).
+* The similarity search for "license limit exceeded" ranked the simulated incident
+  lines first, from both the current and the archived log, followed by real IRIS
+  license messages.
+* A browser run of all five steps in Chromium passed: search, archived rotation
+  opened, baseline captured, the demo task suspended with review and verified in IRIS,
+  comparison, prefilled note and Markdown export; the task was resumed and verified
+  afterwards. No page errors.
+* The static walkthrough (`docs/demo`, rebuilt) still loads without errors and does
+  not show the tour.
+* 46 JavaScript tests and 29 Python tests passed (3 new for the incident: the
+  archive is labelled, listed and readable by the log reader, lines go through IRIS
+  once per container, and an existing rotation is never replaced).
+
 ## Deployment review, September 28, 2026
 
 The later records below retain their original scope and dates. On the dedicated

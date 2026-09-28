@@ -8,7 +8,7 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 
 * **Video demo (2:38):** https://youtu.be/i_EW6gS3EJg
 * **Open Exchange:** https://openexchange.intersystems.com/package/IRIS-Relay
-* **Live IRIS demo:** https://78-17-93-244.sslip.io — shared login shown on the page; disposable lab reset hourly. Use synthetic data only.
+* **Live IRIS demo:** https://78-17-93-244.sslip.io (shared login shown on the page; disposable lab reset hourly; use synthetic data only). A 5-step guided tour walks through a labelled, simulated incident: find it in the current and archived logs with the similarity search, capture a baseline, suspend the failing task with review, then compare and hand over.
 * **No-install walkthrough (fictional data, no IRIS):** https://rafaorlando3.github.io/iris-relay/
 * **Community Opportunity idea implemented:** [DPI-I-966, "Option to show older message.log in IRIS SMP"](https://ideas.intersystems.com/ideas/DPI-I-966)
 

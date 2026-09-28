@@ -50,6 +50,7 @@ function connected(data) {
       "Fictional sample data. All changes stay in this tab. No credentials, API calls or IRIS connection.";
   }
   $("connection").textContent = data.info.username + " · " + data.server;
+  showTour();
   $("nav").replaceChildren();
   let lastArea = "";
   const areaOrder = [
@@ -105,6 +106,7 @@ function disconnected() {
   $("manage-body").replaceChildren();
   $("review").close();
   pendingChange = null;
+  resetTour();
 }
 $("login").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -474,8 +476,11 @@ if (!demoMode)
         `Sign in as ${config.username} with password ${config.password}. This is a disposable IRIS 2026.2 lab shared by everyone. ${every} Only the Relay demonstration objects can be changed.`;
       $("public-demo-note").textContent =
         `Changes are real in this disposable IRIS lab and visible to other visitors. Only objects named Relay… (the demo task, /relay-demo, RelayDemoUser, RelayDemoRole, RelayDemo wallet, RelayDemoCertificate, RelayDemoOAuth, RelayDemoTLS) can be changed. ${every}`;
+      $("public-demo-text").textContent += " A guided tour starts after you sign in.";
       $("public-demo-login").hidden = false;
       $("public-demo").hidden = false;
+      publicDemo = config;
+      showTour();
       $("public-demo-fill").addEventListener("click", () => {
         const form = $("login");
         form.elements.username.value = config.username;
@@ -483,6 +488,142 @@ if (!demoMode)
       });
     })
     .catch(() => {});
+
+// Guided tour of the public demo: a labelled, simulated incident planted by the demo
+// bootstrap (scripts/bootstrap.py) is investigated, changed with review and handed over.
+let publicDemo = null;
+const TOUR_TASK = "Relay demonstration task";
+const TOUR_QUERY = "license limit exceeded";
+async function show(id, reload = true) {
+  if (!reload && current === id) return;
+  current = id;
+  await load();
+}
+function focusTourTask() {
+  $("filter").value = TOUR_TASK;
+  render();
+  $("filter").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+const tourSteps = [
+  {
+    title: "Find the incident in every log",
+    text: "Similarity search for “license limit exceeded” across the current and archived logs, ranked inside IRIS with VECTOR_COSINE. Different wordings of the same problem are found, and repeats are grouped.",
+    async run() {
+      await show("logs", false);
+      const form = $("content").querySelector(".vector-search form");
+      if (!form) throw new Error("The similarity search is not available in this view.");
+      form.querySelector("input").value = TOUR_QUERY;
+      form.requestSubmit();
+      form.closest("section").scrollIntoView({ behavior: "smooth", block: "start" });
+      return "Search started: IRIS ranks the closest lines and the results appear below. Next: step 2.";
+    },
+  },
+  {
+    title: "Read yesterday's archived log",
+    text: "Archived messages.old_* rotations sit next to the current log (Community idea DPI-I-966), so the history of the incident is one click away.",
+    async run() {
+      await show("logs", false);
+      const select = $("content").querySelector("select");
+      const option = select?.querySelector('optgroup[label^="Archived"] option:not([disabled])');
+      if (!option) throw new Error("No archived messages.old_* rotation is listed in this lab yet. Refresh the page and try again.");
+      select.value = option.value;
+      select.dispatchEvent(new Event("change"));
+      $("content").scrollIntoView({ behavior: "smooth", block: "start" });
+      return "Opened " + option.textContent.split(" · ")[0] + ", the archived rotation from yesterday. Next: step 3.";
+    },
+  },
+  {
+    title: "Capture a baseline of scheduled tasks",
+    text: "Relay records where things stand, so the next operator sees exactly what changed during your shift.",
+    async run() {
+      await show("tasks");
+      if (!loaded) throw new Error("Scheduled tasks could not be read. Try again.");
+      $("baseline").click();
+      focusTourTask();
+      return "Baseline captured. Next: step 4.";
+    },
+  },
+  {
+    title: "Suspend the failing task, with review",
+    text: "The review names the target instance and the before and after state. Relay checks the state again before applying and reads it back afterwards. Confirm in the dialog.",
+    async run() {
+      await show("tasks", false);
+      const task = rows(loaded?.data).find((r) => r.Name === TOUR_TASK);
+      if (!task) throw new Error(`The task “${TOUR_TASK}” was not found. Refresh Scheduled tasks and try again.`);
+      focusTourTask();
+      await previewTask(task);
+      return task.Suspended
+        ? "Another visitor already suspended it, so the review offers to resume it. Resume it, then run this step again."
+        : "Check the review, then choose Confirm change.";
+    },
+  },
+  {
+    title: "Compare and hand over",
+    text: "Relay lists what changed since the baseline and suggests a handover note. Then choose Export handover.",
+    async run() {
+      await show("tasks");
+      if (baseline?.resource !== "tasks") throw new Error("Capture the baseline first (step 3).");
+      focusTourTask();
+      $("compare").click();
+      $("diff").querySelector("details")?.setAttribute("open", "");
+      if (!$("notes").value)
+        $("notes").value =
+          "Simulated incident: license limit refusals in the current and archived logs (found with the similarity search). " +
+          `Suspended “${TOUR_TASK}” after review; the change was verified in IRIS. Next: check license use before resuming it.`;
+      $("notes").closest("details").open = true;
+      $("export").classList.add("tour-focus");
+      $("export").focus({ preventScroll: true });
+      setTimeout(() => $("export").classList.remove("tour-focus"), 6000);
+      $("filter").scrollIntoView({ behavior: "smooth", block: "start" });
+      return "Review the changes and the note, then choose Export handover.";
+    },
+  },
+];
+function renderTour() {
+  const list = $("tour-steps");
+  list.replaceChildren();
+  tourSteps.forEach((step, index) => {
+    const item = el("li", undefined, step.done ? "done" : "");
+    const body = el("div");
+    body.append(el("strong", (step.done ? "✓ " : "") + step.title), el("p", step.text));
+    const button = el("button", step.done ? "Again" : "Show me");
+    button.type = "button";
+    button.addEventListener("click", async () => {
+      for (const b of list.querySelectorAll("button")) b.disabled = true;
+      $("tour-status").className = "";
+      $("tour-status").textContent = `Step ${index + 1}: ${step.title}…`;
+      try {
+        const note = await step.run();
+        step.done = true;
+        $("tour-status").textContent = note || `Step ${index + 1} done.`;
+      } catch (error) {
+        $("tour-status").className = "error";
+        $("tour-status").textContent = error.message;
+      } finally {
+        renderTour();
+      }
+    });
+    item.append(body, button);
+    list.append(item);
+  });
+}
+function showTour() {
+  if (!publicDemo || !session || !$("tour").hidden) return;
+  renderTour();
+  $("tour").hidden = false;
+}
+function resetTour() {
+  for (const step of tourSteps) step.done = false;
+  $("tour").hidden = true;
+  $("tour-status").textContent = "";
+}
+$("tour-toggle").addEventListener("click", () => {
+  const open = $("tour-steps").hidden;
+  $("tour-steps").hidden = !open;
+  $("tour-status").hidden = !open;
+  $("tour-toggle").textContent = open ? "Hide tour" : "Show tour";
+  $("tour-toggle").setAttribute("aria-expanded", String(open));
+});
 
 let pendingChange = null;
 async function previewTask(row) {

@@ -11,6 +11,7 @@ disposable demonstration objects.
 """
 import argparse
 import base64
+import calendar
 import json
 import os
 import re
@@ -121,6 +122,57 @@ write "RELAY_READY",!
 ''' % {'u': username, 'p': password, 'r': DEMO_ROLES}, secrets=[password])
 
 
+INCIDENT = '[Relay demo incident]'
+ARCHIVE_NOTE = '[Relay demo archive]'
+# (seconds after 06:00 yesterday, severity, text) for the synthetic archived rotation.
+ARCHIVED_LINES = [
+    (0, 0, ARCHIVE_NOTE + ' Synthetic archived log for the IRIS Relay guided tour. Written by the demo bootstrap, not by IRIS.'),
+    (60, 0, ARCHIVE_NOTE + ' Nightly integrity check of USER completed (simulated)'),
+    (120, 1, INCIDENT + ' License limit reached: new user connection from 10.20.0.14 refused (simulated)'),
+    (300, 1, INCIDENT + ' License limit exceeded; connection from 10.20.0.22 rejected (simulated)'),
+    (540, 1, INCIDENT + ' Licence limit exceeded for RelayDemoUser, CSP session refused (simulated)'),
+    (900, 2, INCIDENT + " Task 'Relay demonstration task' failed with a PROTECT error on ^RelayLabFixture (simulated)"),
+    (1200, 1, INCIDENT + ' Web application /relay-demo answered HTTP 503 to 12 requests in 5 minutes (simulated)'),
+    (1800, 0, ARCHIVE_NOTE + ' Backup of USER completed in 42 seconds (simulated)'),
+]
+# Written to the live messages.log through IRIS, so the current log shows the same incident.
+CURRENT_LINES = [
+    (1, INCIDENT + ' License limit exceeded: user connection from 10.20.0.31 refused (simulated)'),
+    (1, INCIDENT + ' License limit exceeded: user connection from 10.20.0.47 refused (simulated)'),
+    (2, INCIDENT + " Task 'Relay demonstration task' failed again with a PROTECT error on ^RelayLabFixture (simulated)"),
+]
+
+
+def demo_incident(now=None):
+    """Plant a clearly labelled, simulated incident for the public demo's guided tour.
+
+    Adds a synthetic archived rotation (messages.old_<yesterday>) and three lines in the
+    live messages.log, so the log views and the similarity search have something to find.
+    Every line says it is simulated. Runs once per container (a marker survives restarts;
+    the hourly reset recreates the container and therefore the incident)."""
+    manager = Path(run('iris', 'qlist', 'IRIS').stdout.split('^')[1]) / 'mgr'
+    marker = manager / 'relay' / '.demo-incident'
+    if marker.exists():
+        return
+    now = now or time.time()
+    yesterday = time.gmtime(now - 86400)
+    # IRIS in the container logs in UTC; the synthetic lines use the same clock.
+    start = calendar.timegm((yesterday.tm_year, yesterday.tm_mon, yesterday.tm_mday, 6, 0, 0, 0, 0, 0))
+    archive = manager / ('messages.old_' + time.strftime('%Y%m%d', yesterday))
+    if not archive.exists():
+        text = ''.join('%s:000 (%d) %d %s\n' % (time.strftime('%m/%d/%y-%H:%M:%S', time.gmtime(start + offset)),
+                                                4100 + i, severity, message)
+                       for i, (offset, severity, message) in enumerate(ARCHIVED_LINES))
+        staging = manager / '.relay-demo-archive.new'
+        staging.write_text(text)
+        stamp = start + ARCHIVED_LINES[-1][0]
+        os.utime(staging, (stamp, stamp))
+        os.replace(staging, archive)
+    session('\n'.join('do ##class(%%SYS.System).WriteToConsoleLog("%s",0,%d)' % (message.replace('"', '""'), severity)
+                      for severity, message in CURRENT_LINES) + '\nwrite "RELAY_READY",!\n')
+    marker.write_text(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now)) + '\n')
+
+
 def fixtures(src, creds):
     session('''set sc=$SYSTEM.OBJ.Load("%s/fixtures/Relay/DemoApi.cls","ck")
 if $SYSTEM.Status.IsError(sc) { halt }
@@ -163,7 +215,8 @@ def main():
     parser.add_argument('--public-url', default='http://127.0.0.1:52785', help='URL recorded in a newly created credentials file')
     parser.add_argument('--ready-file', help='write this marker after a successful setup (compose health check)')
     parser.add_argument('--demo-account', action='store_true',
-                        help='also create the shared public-demo account from RELAY_DEMO_USER / RELAY_DEMO_PASSWORD')
+                        help='also create the shared public-demo account from RELAY_DEMO_USER / RELAY_DEMO_PASSWORD '
+                             'and plant the labelled, simulated incident used by the guided tour')
     args = parser.parse_args()
     src = Path(args.src).resolve()
     wait_running()
@@ -173,6 +226,7 @@ def main():
     fixtures(src, creds)
     if args.demo_account:
         demo_account(os.environ.get('RELAY_DEMO_USER', 'RelayDemoOperator'), os.environ.get('RELAY_DEMO_PASSWORD'))
+        demo_incident()
     if args.ready_file:
         Path(args.ready_file).write_text(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + '\n')
     print('IRIS Relay bootstrap complete.')

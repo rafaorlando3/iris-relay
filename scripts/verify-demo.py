@@ -108,6 +108,16 @@ code, idx = api('/api/logs/index', 'POST', {})
 check('similarity index', code == 200 and idx.get('totalLines', 0) > 0, idx)
 code, found = api('/api/logs/search?' + urllib.parse.urlencode({'q': 'journaling started', 'limit': 5}))
 check('similarity search', code == 200 and found['rows'], found)
+# Guided tour: the labelled, simulated incident planted by the demo bootstrap.
+archived = [s for s in sources['sources'] if s.get('archived') and s['available']]
+check('archived rotation listed for the guided tour', archived, sources)
+code, old = api('/api/logs/page?' + urllib.parse.urlencode({'source': archived[0]['id']}))
+check('archived rotation readable and labelled', code == 200 and any('[Relay demo' in r['Message'] for r in old['data']), old)
+code, incident = api('/api/logs/search?' + urllib.parse.urlencode({'q': 'license limit exceeded', 'limit': 5}))
+files = {name for row in incident.get('rows', []) for name in row['Files']} if code == 200 else set()
+check('guided tour incident found in the current and archived logs',
+      code == 200 and incident['rows'] and '[Relay demo incident]' in incident['rows'][0]['Message']
+      and 'messages.log' in files and archived[0]['name'] in files, incident)
 code, audit = api('/api/audit/query', 'POST', {'maxRows': 5})
 check('audit query accepted', code in (200, 202), audit)
 code, catalog = api('/api/explorer/catalog')
