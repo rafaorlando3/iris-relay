@@ -552,6 +552,7 @@ const tourSteps = [
       if (!task) throw new Error(`The task “${TOUR_TASK}” was not found. Refresh Scheduled tasks and try again.`);
       focusTourTask();
       await previewTask(task);
+      if (!$("review").open) throw new Error($("status").textContent || "The task review could not be opened.");
       return task.Suspended
         ? "Another visitor already suspended it, so the review offers to resume it. Resume it, then run this step again."
         : "Check the review, then choose Confirm change.";
@@ -562,6 +563,7 @@ const tourSteps = [
     text: "Relay lists what changed since the baseline and suggests a handover note. Then choose Export handover.",
     async run() {
       await show("tasks");
+      if (!loaded) throw new Error("Scheduled tasks could not be read. Try again.");
       if (baseline?.resource !== "tasks") throw new Error("Capture the baseline first (step 3).");
       focusTourTask();
       $("compare").click();
@@ -569,7 +571,7 @@ const tourSteps = [
       if (!$("notes").value)
         $("notes").value =
           "Simulated incident: license limit refusals in the current and archived logs (found with the similarity search). " +
-          `Suspended “${TOUR_TASK}” after review; the change was verified in IRIS. Next: check license use before resuming it.`;
+          `Review the comparison and session activity below to confirm whether “${TOUR_TASK}” was changed and verified. Next: check license use before deciding whether to resume it.`;
       $("notes").closest("details").open = true;
       $("export").classList.add("tour-focus");
       $("export").focus({ preventScroll: true });
