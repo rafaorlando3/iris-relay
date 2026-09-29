@@ -7,6 +7,7 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 ![IRIS Relay: a reviewed task change, applied and verified in IRIS](docs/images/review-verified.png)
 
 * **0.4 guided tour (1:34):** https://youtu.be/A5OkIV2Q3xA
+* **0.4 tour on InterSystems Developers:** https://youtu.be/QGhXXNL_N08
 * **0.3 walkthrough (2:38):** https://youtu.be/i_EW6gS3EJg
 * **Open Exchange:** https://openexchange.intersystems.com/package/IRIS-Relay
 * **Live IRIS demo:** https://78-17-93-244.sslip.io (shared login shown on the page; disposable lab reset hourly; use synthetic data only). A 5-step guided tour walks through a labelled, simulated incident: find it in the current and archived logs with the similarity search, capture a baseline, suspend the failing task with review, then compare and hand over.
