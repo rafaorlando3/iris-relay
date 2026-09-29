@@ -13,6 +13,16 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 * **No-install walkthrough (fictional data, no IRIS):** https://rafaorlando3.github.io/iris-relay/
 * **Community Opportunity idea implemented:** [DPI-I-966, "Option to show older message.log in IRIS SMP"](https://ideas.intersystems.com/ideas/DPI-I-966)
 
+## At a glance
+
+<table>
+<tr><td width="50%"><a href="docs/images/guided-tour.png"><img src="docs/images/guided-tour.png" alt="Guided tour of a labelled, simulated incident (live demo)"></a><br><sub>Guided tour of a labelled, simulated incident (live demo)</sub></td><td width="50%"><a href="docs/images/vector-search.png"><img src="docs/images/vector-search.png" alt="Similarity search across current and archived logs (IRIS Vector Search)"></a><br><sub>Similarity search across current and archived logs (IRIS Vector Search)</sub></td></tr>
+<tr><td width="50%"><a href="docs/images/archived-logs.png"><img src="docs/images/archived-logs.png" alt="Archived messages.old_* logs (Community idea DPI-I-966)"></a><br><sub>Archived messages.old_* logs (Community idea DPI-I-966)</sub></td><td width="50%"><a href="docs/images/review-verified.png"><img src="docs/images/review-verified.png" alt="Reviewed change: target instance and exact action, verified in IRIS"></a><br><sub>Reviewed change: target instance and exact action, verified in IRIS</sub></td></tr>
+<tr><td width="50%"><a href="docs/images/permissions-review.png"><img src="docs/images/permissions-review.png" alt="Permissions: role change with a before/after preview"></a><br><sub>Permissions: role change with a before/after preview</sub></td><td width="50%"><a href="docs/images/security-x509.png"><img src="docs/images/security-x509.png" alt="Security: X.509 credential owners (also wallet, OAuth and TLS)"></a><br><sub>Security: X.509 credential owners (also wallet, OAuth and TLS)</sub></td></tr>
+<tr><td width="50%"><a href="docs/images/rest-explorer.png"><img src="docs/images/rest-explorer.png" alt="REST explorer: 28 allowlisted, read-only SysAdmin API calls"></a><br><sub>REST explorer: 28 allowlisted, read-only SysAdmin API calls</sub></td><td width="50%"><a href="docs/images/audit.png"><img src="docs/images/audit.png" alt="Audit log queries that run in the background"></a><br><sub>Audit log queries that run in the background</sub></td></tr>
+<tr><td width="50%"><a href="docs/images/handover.png"><img src="docs/images/handover.png" alt="Compare with the baseline and hand over with a note"></a><br><sub>Compare with the baseline and hand over with a note</sub></td><td width="50%"><a href="docs/images/overview.png"><img src="docs/images/overview.png" alt="System overview from the SysAdmin API v2"></a><br><sub>System overview from the SysAdmin API v2</sub></td></tr>
+</table>
+
 ## Why
 
 IRIS Relay was built for the people who operate IRIS: to investigate problems, make changes safely and leave a clear shift handover. It brings diagnosis, state comparison and the history of changes into one flow, so less time goes into collecting information during an incident.
