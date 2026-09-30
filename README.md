@@ -14,6 +14,22 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 * **No-install walkthrough (fictional data, no IRIS):** https://rafaorlando3.github.io/iris-relay/
 * **Community Opportunity idea implemented:** [DPI-I-966, "Option to show older message.log in IRIS SMP"](https://ideas.intersystems.com/ideas/DPI-I-966)
 
+## For judges: two minutes
+
+1. **Watch** the [1:34 guided tour](https://youtu.be/A5OkIV2Q3xA).
+2. **Try it without installing anything:** open the [live IRIS demo](https://78-17-93-244.sslip.io) (shared login on the page) and follow its 5-step guided tour, or use the [no-install walkthrough](https://rafaorlando3.github.io/iris-relay/) with fictional data.
+3. **Run it yourself:** `docker compose up -d` starts IRIS 2026.2 and Relay in about 2 minutes ([Quick start](#quick-start-one-command-about-2-minutes)).
+
+| Judging criterion | Where to look |
+| --- | --- |
+| Complexity | Every change is reviewed, re-checked, applied once and read back from IRIS ([How a change works](#how-a-change-works)). Log similarity search runs inside IRIS with Embedded Python and IRIS Vector Search ([New in 0.4](#new-in-04-search-every-log-file-by-similarity-iris-vector-search)). |
+| Clarity of instructions | One-command [Quick start](#quick-start-one-command-about-2-minutes), a 5-minute tour and the full reviewer script in [docs/DEMO.md](docs/DEMO.md). |
+| Developer experience | No runtime npm dependencies, 46 JavaScript and 29 Python tests ([Validation](#validation)), and an IPM package for the IRIS side ([IPM](#install-the-iris-side-on-an-existing-instance-ipm)). |
+| Applicability | Shift handover with baseline comparison and Markdown/JSON export; archived `messages.old_*` logs from Community idea [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966). |
+| Usability | Before/after preview on every change, a plain "Applied and verified in IRIS" status and a guided tour on a labelled incident ([At a glance](#at-a-glance)). |
+
+Technology bonuses and their evidence: [docs/CONTEST.md](docs/CONTEST.md). What Relay does not do: [Limitations](#limitations).
+
 ## At a glance
 
 <table>

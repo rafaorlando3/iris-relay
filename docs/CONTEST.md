@@ -17,13 +17,16 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 
 | Bonus | What the repository provides |
 | --- | --- |
-| Docker | `docker compose up -d` (IRIS + Relay, one command) and `scripts/lab.py`, both on the pinned official IRIS Community 2026.2 image |
 | Embedded Python | `Relay.LogReader` runs `src/Relay/log_reader.py` and `log_vectors.py` inside IRIS |
-| IPM package | `module.xml`: `zpm "install iris-relay"` installs the IRIS side (`/api/relay`, log reader, similarity search table); the UI runs with compose or Node |
-| Vector search | `Relay.LogLine` stores `VECTOR(DOUBLE, 256)` embeddings of log lines; similarity search ranks them with `VECTOR_COSINE` ([details](LOGS.md)) |
-| Community Opportunity idea | [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966), archived `messages.old_*` logs, in 0.3.0 ([details](LOGS.md)) |
-| YouTube video | [Demo recorded on the real lab](https://youtu.be/i_EW6gS3EJg) |
-| Article | [Developer Community article](https://community.intersystems.com/post/iris-relay-consistency-and-safety-during-shift-handovers), with linked Portuguese and Spanish translations |
-| First contribution | First Open Exchange contest for the author |
+| IRIS Vector Search | `Relay.LogLine` stores `VECTOR(DOUBLE, 256)` embeddings of log lines; similarity search ranks them with `VECTOR_COSINE` ([details](LOGS.md)) |
+| Docker container usage | `docker compose up -d` (IRIS + Relay, one command) and `scripts/lab.py`, both on the pinned official IRIS Community 2026.2 image |
+| ZPM Package deployment | `module.xml`: `zpm "install iris-relay"` installs the IRIS side (`/api/relay`, log reader, similarity search table); the UI runs with compose or Node |
+| Online Demo | [Real disposable IRIS lab](https://78-17-93-244.sslip.io), shared login shown on the page, reset hourly ([DEMO-HOSTING.md](DEMO-HOSTING.md)) |
+| Implement Community Opportunity Idea | [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966), archived `messages.old_*` logs, in 0.3.0 ([details](LOGS.md)) |
+| Find a bug in Embedded Python | [python-bugreports #17](https://github.com/intersystems-community/python-bugreports/issues/17) (`None` stored as text instead of SQL NULL) and [#18](https://github.com/intersystems-community/python-bugreports/issues/18) (`SQLError` with an empty message when a DELETE or UPDATE affects no rows) |
+| First Article on Developer Community | [Developer Community article](https://community.intersystems.com/post/iris-relay-consistency-and-safety-during-shift-handovers) |
+| Second Article on DC | [Spanish translation](https://es.community.intersystems.com/post/iris-relay-consistencia-y-seguridad-en-los-cambios-de-turno); a Portuguese translation is linked from the article |
+| First Time Contribution | First Open Exchange contest for the author |
+| Video on YouTube | [Demo recorded on the real lab](https://youtu.be/i_EW6gS3EJg); newer [0.4 guided tour](https://youtu.be/A5OkIV2Q3xA) |
 
-Online demo: [real disposable IRIS lab](https://78-17-93-244.sslip.io), shared login shown on the page, reset hourly. Deployed and verified on a dedicated Ubuntu VPS ([DEMO-HOSTING.md](DEMO-HOSTING.md)). The separate GitHub Pages walkthrough is static and fictional. Not provided: Embedded Python bug report.
+Online demo: [real disposable IRIS lab](https://78-17-93-244.sslip.io), shared login shown on the page, reset hourly. Deployed and verified on a dedicated Ubuntu VPS ([DEMO-HOSTING.md](DEMO-HOSTING.md)). The separate GitHub Pages walkthrough is static and fictional.
