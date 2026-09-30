@@ -141,6 +141,8 @@ Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose
 
 ## Validation
 
+[![tests](https://github.com/rafaorlando3/iris-relay/actions/workflows/tests.yml/badge.svg)](https://github.com/rafaorlando3/iris-relay/actions/workflows/tests.yml)
+
 ```sh
 npm test            # 46 JavaScript tests
 npm run test:logs   # 29 Python tests (log reader, similarity index, lab helper, demo incident)
