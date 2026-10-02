@@ -4,7 +4,7 @@ import {
   previewConfiguration,
   applyConfiguration,
 } from "./configuration.mjs";
-import { randomBytes } from "node:crypto";
+import { randomHex } from "./random.mjs";
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });
@@ -261,7 +261,7 @@ export async function previewManagement(session, input, upstream, server) {
   if (canonical(before) === canonical(desired))
     fail(409, "There are no changes to apply.");
   payload = desired;
-  const token = randomBytes(24).toString("hex");
+  const token = randomHex(24);
   const plan = {
     kind,
     name,

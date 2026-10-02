@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomHex } from "./random.mjs";
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });
 };
@@ -153,7 +153,7 @@ export async function startAudit(session, input, upstream) {
       fail(502, "IRIS did not acknowledge an asynchronous audit query.");
     const irisId = asyncId(result.location);
     session.auditJob = {
-      id: randomBytes(24).toString("hex"),
+      id: randomHex(24),
       irisId,
       limit: query.limit,
       filters: query.filters,

@@ -1,19 +1,13 @@
 import http from "node:http";
-import { startAudit, readAudit } from "./audit.mjs";
-import { operations, buildQuery } from "./explorer.mjs";
-import {
-  managementState,
-  previewManagement,
-  applyManagement,
-} from "./management.mjs";
 import { readFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { resources, redact, apiError } from "./resources.mjs";
+import { resources } from "./resources.mjs";
+import { createUpstream, route, signIn, validCredentials } from "./routes.mjs";
+export { DEMO_TARGETS, DEMO_TASK } from "./routes.mjs";
 
 const sessionLifetime = 30 * 60 * 1000;
-const maxBytes = 2 * 1024 * 1024;
 const publicDir = fileURLToPath(new URL("./public/", import.meta.url));
 const files = {
   "/demo.js": ["demo.js", "text/javascript"],
@@ -27,19 +21,6 @@ const files = {
   "/style.css": ["style.css", "text/css"],
 };
 
-// Public demo: only the shared demo account may sign in, and only the disposable
-// Relay demonstration objects created by scripts/bootstrap.py can be changed.
-export const DEMO_TARGETS = {
-  webapps: ["/relay-demo"],
-  users: ["RelayDemoUser"],
-  collections: ["RelayDemo"],
-  certificates: ["RelayDemoCertificate"],
-  oauthResources: ["RelayDemoOAuth"],
-  oauthSettings: ["RelayDemoOAuth"],
-  tls: ["RelayDemoTLS"],
-  rolePolicy: ["RelayDemoRole"],
-};
-export const DEMO_TASK = "Relay demonstration task";
 const MAX_SESSIONS = 500;
 
 // RELAY_PUBLIC_ORIGIN: the https origin a reverse proxy serves Relay on (demo hosting).
@@ -83,10 +64,6 @@ export function createApp({
     (trustProxy &&
       req.headers["x-forwarded-for"]?.split(",").at(-1).trim()) ||
     req.socket.remoteAddress;
-  const demoRefusal = (kind, name) =>
-    demo && !(DEMO_TARGETS[kind] || []).includes(name)
-      ? "In the public demo only the Relay demonstration objects can be changed."
-      : null;
   const cleanup = setInterval(() => {
     const now = Date.now();
     for (const [id, s] of sessions) if (s.expires < now) sessions.delete(id);
@@ -114,88 +91,8 @@ export function createApp({
       throw Object.assign(new Error("Invalid JSON"), { status: 400 });
     }
   }
-  async function upstream(
-    credentials,
-    path,
-    method = "GET",
-    data,
-    base = "/api/admin",
-    timeoutMs = 10000,
-  ) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetcher(new URL(base + path, target), {
-        method,
-        redirect: "error",
-        signal: controller.signal,
-        headers: {
-          Authorization:
-            "Basic " +
-            Buffer.from(
-              credentials.username + ":" + credentials.password,
-            ).toString("base64"),
-          Accept: "application/json",
-          ...(data ? { "Content-Type": "application/json" } : {}),
-        },
-        ...(data ? { body: JSON.stringify(data) } : {}),
-      });
-      if (!response.ok) {
-        await response.body?.cancel();
-        return {
-          ok: false,
-          status: response.status,
-          error: apiError(response.status),
-        };
-      }
-      const reader = response.body.getReader();
-      let bytes = 0,
-        chunks = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        bytes += value.length;
-        if (bytes > maxBytes) {
-          await reader.cancel();
-          return {
-            ok: false,
-            status: 502,
-            error: "IRIS response is too large; narrow the query.",
-          };
-        }
-        chunks.push(value);
-      }
-      let decoded;
-      try {
-        decoded = JSON.parse(Buffer.concat(chunks).toString());
-      } catch {
-        return {
-          ok: false,
-          status: 502,
-          error: "IRIS returned an unexpected response format.",
-        };
-      }
-      const errors = decoded.status?.errors ?? decoded.status?.Errors ?? [];
-      if (errors.length)
-        return {
-          ok: false,
-          status: 502,
-          error: "IRIS reported an application error. Review the IRIS logs.",
-        };
-      return {
-        ok: true,
-        status: response.status,
-        data: redact(decoded.result ?? decoded),
-        ...(response.status === 202
-          ? { location: response.headers.get("location") }
-          : {}),
-      };
-    } catch {
-      return { ok: false, status: 503, error: apiError(503) };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
+  // One IRIS request as the operator (shared with the IRIS-served UI, see routes.mjs).
+  const upstream = createUpstream({ fetcher, target });
 
   const server = http.createServer(async (req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -257,13 +154,7 @@ export function createApp({
             error: "Too many failed sign-ins. Try again in five minutes.",
           });
         const credentials = await body(req);
-        if (
-          typeof credentials.username !== "string" ||
-          typeof credentials.password !== "string" ||
-          !credentials.username ||
-          !credentials.password ||
-          credentials.username.includes(":")
-        )
+        if (!validCredentials(credentials))
           return reply(res, 400, {
             error: "Enter your IRIS username and password.",
           });
@@ -271,23 +162,15 @@ export function createApp({
           return reply(res, 403, {
             error: `This public demo only accepts the shared account ${demo.username}.`,
           });
-        const info = await upstream(credentials, "/info");
-        if (!info.ok) {
-          if (info.status === 401)
+        const signed = await signIn(credentials, upstream);
+        if (signed.status !== 200) {
+          if (signed.status === 401)
             failures.set(key, {
               count: (throttle?.until > Date.now() ? throttle.count : 0) + 1,
               until: Date.now() + 300000,
             });
-          return reply(res, info.status, { error: info.error });
+          return reply(res, signed.status, { error: signed.error });
         }
-        const check = await upstream(credentials, "/v2/tasks?maxRows=1");
-        if (check.status === 404)
-          return reply(res, 409, {
-            error:
-              "This IRIS instance does not expose API v2. Use a compatible IRIS 2026.2 instance.",
-          });
-        if (check.status === 503)
-          return reply(res, 503, { error: check.error });
         failures.delete(key);
         if (sid) sessions.delete(sid);
         const id = randomBytes(32).toString("hex");
@@ -300,7 +183,7 @@ export function createApp({
             username: credentials.username,
             password: credentials.password,
           },
-          info: info.data,
+          info: signed.info,
           csrf,
           expires: Date.now() + sessionLifetime,
           plans: new Map(),
@@ -308,7 +191,7 @@ export function createApp({
         return reply(
           res,
           200,
-          { info: info.data, csrf, resources, server: target.origin },
+          { info: signed.info, csrf, resources, server: target.origin },
           {
             "Set-Cookie": `relay_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800${origin.startsWith("https:") ? "; Secure" : ""}`,
           },
@@ -339,316 +222,16 @@ export function createApp({
           },
         );
       }
-      if (
-        ["/api/logs/sources", "/api/logs/page"].includes(url.pathname) &&
-        req.method === "GET"
-      ) {
-        const source = url.searchParams.get("source") || "runtime",
-          cursor = url.searchParams.get("cursor") || "";
-        if (
-          !(
-            /^(runtime|console|system-monitor|alerts)(\.[1-3])?$/.test(source) ||
-            /^(runtime|console)\.old_[0-9A-Za-z_-]{1,48}$/.test(source)
-          ) ||
-          cursor.length > 1024 ||
-          !/^[A-Za-z0-9_=-]*$/.test(cursor)
-        )
-          return reply(res, 400, { error: "Invalid log source or cursor." });
-        const list = url.pathname.endsWith("sources");
-        const result = await upstream(
-          session.credentials,
-          list
-            ? "/log-sources"
-            : "/logs?" + new URLSearchParams({ source, cursor }),
-          "GET",
-          undefined,
-          "/api/relay",
-        );
-        if (!result.ok)
-          return reply(res, result.status, { error: result.error });
-        if (result.data.error)
-          return reply(res, 409, { error: result.data.error });
-        return reply(
-          res,
-          200,
-          list
-            ? result.data
-            : {
-                resource: "logs",
-                observedAt: result.data.observedAt,
-                limit: 150,
-                data: result.data.rows,
-                metadata: { ...result.data, rows: undefined },
-              },
-        );
-      }
-      if (url.pathname === "/api/logs/search" && req.method === "GET") {
-        const q = (url.searchParams.get("q") || "").trim(),
-          limit = Number(url.searchParams.get("limit") || 20);
-        if (!q || q.length > 200 || !Number.isInteger(limit) || limit < 1 || limit > 50)
-          return reply(res, 400, {
-            error: "Enter a search text of 1 to 200 characters and a limit from 1 to 50.",
-          });
-        const result = await upstream(
-          session.credentials,
-          "/log-search?" + new URLSearchParams({ q, limit: String(limit) }),
-          "GET",
-          undefined,
-          "/api/relay",
-        );
-        if (!result.ok) return reply(res, result.status, { error: result.error });
-        if (result.data.error) return reply(res, 409, { error: result.data.error });
-        return reply(res, 200, result.data);
-      }
-      if (url.pathname === "/api/logs/index" && req.method === "POST") {
-        // Indexing reads up to 20,000 lines inside IRIS; allow it more time than a view.
-        const result = await upstream(
-          session.credentials,
-          "/log-index",
-          "POST",
-          {},
-          "/api/relay",
-          120000,
-        );
-        if (!result.ok) return reply(res, result.status, { error: result.error });
-        if (result.data.error) return reply(res, 409, { error: result.data.error });
-        return reply(res, 200, result.data);
-      }
-      if (url.pathname === "/api/audit/query" && req.method === "POST")
-        return reply(
-          res,
-          202,
-          await startAudit(session, await body(req), upstream),
-        );
-      if (url.pathname === "/api/audit/result" && req.method === "GET")
-        return reply(
-          res,
-          200,
-          await readAudit(session, url.searchParams.get("id"), upstream),
-        );
-      if (url.pathname === "/api/explorer/catalog" && req.method === "GET")
-        return reply(res, 200, { operations, server: target.origin });
-      if (url.pathname === "/api/explorer/run" && req.method === "POST") {
-        const input = await body(req);
-        const query = buildQuery(input.operation, input.parameters);
-        const started = performance.now();
-        const result = await upstream(session.credentials, query.path);
-        return reply(res, result.ok ? 200 : result.status, {
-          ...result,
-          ...query,
-          resource: "explorer",
-          observedAt: new Date().toISOString(),
-          durationMs: Math.round(performance.now() - started),
-        });
-      }
-      if (url.pathname === "/api/manage/details" && req.method === "GET") {
-        const state = await managementState(
-          session,
-          url.searchParams.get("kind"),
-          url.searchParams.get("name"),
-          upstream,
-        );
-        const { path, ...visible } = state;
-        if (state.kind === "rolePolicy")
-          visible.owners = await upstream(
-            session.credentials,
-            "/v2/security/role/owners?" +
-              new URLSearchParams({ name: state.name, maxRows: "100" }),
-          );
-        if (state.kind === "certificates")
-          visible.certificate = await upstream(
-            session.credentials,
-            "/v2/security/x509-credential/certificate?" +
-              new URLSearchParams({ alias: state.name }),
-          );
-        if (state.kind === "collections")
-          visible.inventory = await upstream(
-            session.credentials,
-            "/v2/wallet/secrets?" +
-              new URLSearchParams({ collection: state.name, maxRows: "100" }),
-          );
-        return reply(res, 200, visible);
-      }
-      if (url.pathname === "/api/manage/preview" && req.method === "POST") {
-        const input = await body(req);
-        const refusal = demoRefusal(input?.kind, input?.name);
-        if (refusal) return reply(res, 403, { error: refusal });
-        return reply(
-          res,
-          200,
-          await previewManagement(session, input, upstream, target.origin),
-        );
-      }
-      if (url.pathname === "/api/manage/apply" && req.method === "POST")
-        return reply(
-          res,
-          200,
-          await applyManagement(session, (await body(req)).token, upstream),
-        );
-      if (url.pathname === "/api/tasks/preview" && req.method === "POST") {
-        const { taskId, action } = await body(req);
-        if (
-          !Number.isSafeInteger(taskId) ||
-          taskId < 1 ||
-          !["suspend", "resume"].includes(action)
-        )
-          return reply(res, 400, {
-            error: "Choose a valid task and supported action.",
-          });
-        const tasks = await upstream(session.credentials, "/v2/tasks");
-        if (!tasks.ok) return reply(res, tasks.status, { error: tasks.error });
-        const task = Array.isArray(tasks.data)
-          ? tasks.data.find((t) => t.Id === taskId)
-          : null;
-        if (!task) return reply(res, 404, { error: "Task not found." });
-        if (task.Type !== "User")
-          return reply(res, 403, {
-            error:
-              "Relay only changes user-defined tasks. System tasks are protected.",
-          });
-        if (demo && task.Name !== DEMO_TASK)
-          return reply(res, 403, {
-            error:
-              "In the public demo only the Relay demonstration objects can be changed.",
-          });
-        const detail = await upstream(
-          session.credentials,
-          `/v2/task/info?id=${taskId}`,
-        );
-        if (!detail.ok)
-          return reply(res, detail.status, { error: detail.error });
-        if (typeof detail.data.Suspended !== "boolean")
-          return reply(res, 502, {
-            error: "Task suspension state could not be verified.",
-          });
-        task.Suspended = detail.data.Suspended;
-        const desired = action === "suspend";
-        if (task.Suspended === desired)
-          return reply(res, 409, {
-            error: "This task is already in the requested state.",
-          });
-        // One outstanding plan per session, expiring in two minutes.
-        session.plans.clear();
-        const token = randomBytes(24).toString("hex");
-        const plan = {
-          token,
-          taskId,
-          action,
-          name: task.Name,
-          before: task.Suspended,
-          desired,
-          expires: Date.now() + 120000,
-        };
-        session.plans.set(token, plan);
-        return reply(res, 200, { ...plan, server: target.origin });
-      }
-      if (url.pathname === "/api/tasks/apply" && req.method === "POST") {
-        const { token } = await body(req),
-          plan = session.plans.get(token);
-        if (!plan || plan.kind || plan.expires < Date.now())
-          return reply(res, 409, {
-            error:
-              "Review this change again; the preview expired or was already used.",
-          });
-        session.plans.delete(token);
-        const before = await upstream(session.credentials, "/v2/tasks");
-        if (!before.ok)
-          return reply(res, before.status, { error: before.error });
-        const task = Array.isArray(before.data)
-          ? before.data.find((t) => t.Id === plan.taskId)
-          : null;
-        const detail = await upstream(
-          session.credentials,
-          `/v2/task/info?id=${plan.taskId}`,
-        );
-        if (!detail.ok)
-          return reply(res, detail.status, { error: detail.error });
-        if (
-          !task ||
-          task.Type !== "User" ||
-          task.Name !== plan.name ||
-          detail.data.Suspended !== plan.before
-        )
-          return reply(res, 409, {
-            error:
-              "Task state changed since the preview. Refresh and review again.",
-          });
-        const result = await upstream(
-          session.credentials,
-          `/v2/task/${plan.action}?id=${plan.taskId}`,
-          "POST",
-          plan.action === "suspend" ? { LeaveInQueue: true } : undefined,
-        );
-        if (!result.ok)
-          return reply(res, result.status, {
-            error:
-              result.error +
-              " The action may have reached IRIS. Refresh before trying again.",
-          });
-        const after = await upstream(
-          session.credentials,
-          `/v2/task/info?id=${plan.taskId}`,
-        );
-        const observed = after.ok
-          ? { Name: task.Name, Id: plan.taskId, ...after.data }
-          : null;
-        return reply(res, 200, {
-          accepted: true,
-          verified: observed?.Suspended === plan.desired,
-          task: observed ?? null,
-          observedAt: new Date().toISOString(),
-        });
-      }
-      if (url.pathname.startsWith("/api/resource/") && req.method === "GET") {
-        const id = url.pathname.slice("/api/resource/".length),
-          resource = resources[id];
-        if (!Object.hasOwn(resources, id))
-          return reply(res, 404, { error: "Unknown resource." });
-        if (resource.virtual)
-          return reply(res, 400, {
-            error: "Use the REST explorer catalog and run endpoints.",
-          });
-        const params = new URLSearchParams();
-        if (resource.table && !resource.base) params.set("maxRows", "100");
-        const result = await upstream(
-          session.credentials,
-          resource.path + (params.size ? "?" + params : ""),
-          "GET",
-          undefined,
-          resource.base,
-        );
-        if (id === "runtime" && result.ok) {
-          if (result.data.error)
-            return reply(res, 409, { error: result.data.error });
-          const { rows, ...metadata } = result.data;
-          if (!Array.isArray(rows))
-            return reply(res, 502, {
-              error: "Runtime log response is invalid.",
-            });
-          result.data = rows;
-          result.metadata = metadata;
-        }
-        if (id === "tasks" && result.ok && Array.isArray(result.data)) {
-          // IRIS 2026.2 list can lag behind task/info after suspension.
-          for (const task of result.data.filter((t) => t.Type === "User")) {
-            const detail = await upstream(
-              session.credentials,
-              `/v2/task/info?id=${task.Id}`,
-            );
-            task.Suspended =
-              detail.ok && typeof detail.data.Suspended === "boolean"
-                ? detail.data.Suspended
-                : null;
-            task.StateSource = detail.ok ? "Task details" : "Unavailable";
-          }
-        }
-        return reply(res, result.ok ? 200 : result.status, {
-          ...result,
-          resource: id,
-          observedAt: new Date().toISOString(),
-          limit: resource.table ? resource.limit || 100 : null,
-        });
-      }
+      const handled = await route(
+        {
+          method: req.method,
+          pathname: url.pathname,
+          searchParams: url.searchParams,
+          readBody: () => body(req),
+        },
+        { session, upstream, server: target.origin, demo },
+      );
+      if (handled) return reply(res, handled.status, handled.data);
       return reply(res, 404, { error: "Not found." });
     } catch (e) {
       reply(res, e.status ?? 500, {

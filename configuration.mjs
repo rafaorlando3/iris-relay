@@ -1,5 +1,5 @@
 // Selective management of existing configurations. Never echo private fields.
-import { randomBytes } from "node:crypto";
+import { randomHex } from "./random.mjs";
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });
 };
@@ -241,7 +241,7 @@ export async function previewConfiguration(session, input, upstream, server) {
     desired,
     dependency,
     snapshot: stable(state.data),
-    token: randomBytes(24).toString("hex"),
+    token: randomHex(24),
     expires: Date.now() + 120000,
     configuration: true,
   };
