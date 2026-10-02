@@ -20,7 +20,7 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 | Embedded Python | `Relay.LogReader` runs `src/Relay/log_reader.py` and `log_vectors.py` inside IRIS |
 | IRIS Vector Search | `Relay.LogLine` stores `VECTOR(DOUBLE, 256)` embeddings of log lines; similarity search ranks them with `VECTOR_COSINE` ([details](LOGS.md)) |
 | Docker container usage | `docker compose up -d` (IRIS + Relay, one command) and `scripts/lab.py`, both on the pinned official IRIS Community 2026.2 image |
-| ZPM Package deployment | `module.xml`: `zpm "install iris-relay"` installs the IRIS side (`/api/relay`, log reader, similarity search table); the UI runs with compose or Node |
+| ZPM Package deployment | `module.xml`: `zpm "install iris-relay"` installs the full IRIS Relay UI, which IRIS serves at `/relay/index.html` with no Node.js or Python server, plus the IRIS side (`/api/relay`, log reader, similarity search table). Evidence below |
 | Online Demo | [Real disposable IRIS lab](https://78-17-93-244.sslip.io), shared login shown on the page, reset hourly ([DEMO-HOSTING.md](DEMO-HOSTING.md)) |
 | Implement Community Opportunity Idea | [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966), archived `messages.old_*` logs, in 0.3.0 ([details](LOGS.md)) |
 | Find a bug in Embedded Python | [python-bugreports #17](https://github.com/intersystems-community/python-bugreports/issues/17) (`None` stored as text instead of SQL NULL) and [#18](https://github.com/intersystems-community/python-bugreports/issues/18) (`SQLError` with an empty message when a DELETE or UPDATE affects no rows) |
@@ -28,5 +28,16 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 | Second Article on DC | [Spanish translation](https://es.community.intersystems.com/post/iris-relay-consistencia-y-seguridad-en-los-cambios-de-turno); a Portuguese translation is linked from the article |
 | First Time Contribution | First Open Exchange contest for the author |
 | Video on YouTube | [Demo recorded on the real lab](https://youtu.be/i_EW6gS3EJg); newer [0.4 guided tour](https://youtu.be/A5OkIV2Q3xA) |
+
+## IPM package: the UI starts and works with IRIS alone (0.5.0)
+
+The organizers' condition for this bonus: after installation through IPM, the application must start and work without additional tools such as a Node.js or Python server, and the package must include the UI. From 0.5.0:
+
+1. `zpm "install iris-relay"` (or `zpm "load <checkout>"` before the registry has 0.5.0).
+2. Open `http://localhost:52773/relay/index.html` on the IRIS machine, or `https://<host>/relay/index.html` from anywhere else, and sign in with an IRIS account (see [What the account needs](../README.md#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)).
+
+That page is the full UI, not a reduced one: every area of the Node version, including reviewed changes with read-back, tasks, logs and the similarity search, audit, the REST explorer and the handover export. IRIS serves it from a static-files-only web application (`/relay`, CSP/ZEN and auto-compile off). The Relay API runs in the browser with the same modules as the Node server and calls IRIS on the same origin (`/api/admin` and `/api/relay`). Embedded Python, which runs inside IRIS, reads the logs and computes the similarity index; nothing runs outside IRIS. Relay Lite stays at `/relay/lite.html`.
+
+Checked end to end on October 2, 2026, on a fresh IRIS Community 2026.2 container (pinned image) with IPM 0.10.9 from the official installer and `zpm "load"` of the 0.5.0 tree, in Chromium, with no Node.js server running: sign-in, every view, log paging and archived rotations, the similarity search, seven kinds of reviewed changes and a task suspension, each read back from IRIS outside the browser and restored, baseline comparison, Markdown and JSON handover, audit, all 28 explorer operations, replay and drift refused, sign-out cancelling a request in flight, nothing stored in the browser, zero console errors, every request to the IRIS origin only; then `zpm "uninstall iris-relay"` removed the classes, both web applications and the files. Details in [VALIDATION.md](VALIDATION.md).
 
 Online demo: [real disposable IRIS lab](https://78-17-93-244.sslip.io), shared login shown on the page, reset hourly. Deployed and verified on a dedicated Ubuntu VPS ([DEMO-HOSTING.md](DEMO-HOSTING.md)). The separate GitHub Pages walkthrough is static and fictional.

@@ -1,0 +1,193 @@
+// Browser backend for the IRIS-served Relay UI (IPM package, /relay/index.html).
+// It answers the same API surface as server.mjs (/api/login, /api/resource/...,
+// /api/manage/..., /api/tasks/..., /api/logs/..., /api/audit/..., /api/explorer/...)
+// inside the page, with the same review, re-check, apply-once and read-back logic
+// (routes.mjs and the modules it uses), and calls IRIS on the same origin at
+// /api/admin and /api/relay as the signed-in operator. No Node.js or Python server.
+//
+// Credentials: kept in this module's memory only (never in browser storage or
+// cookies), sent as HTTP Basic only over HTTPS or to a loopback host, and dropped
+// on sign-out or after 30 minutes, which also cancels every request in flight.
+import { createUpstream, route, signIn, validCredentials } from "./routes.mjs";
+import { resources } from "./resources.mjs";
+
+export const SESSION_LIFETIME_MS = 30 * 60 * 1000;
+export const MAX_INPUT_BYTES = 16000;
+const IRIS_BASES = ["/api/admin/", "/api/relay/"];
+
+export const isLoopbackHost = (host) =>
+  host === "localhost" ||
+  host === "[::1]" ||
+  /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+// HTTP Basic is readable on the wire, so the password only travels over HTTPS,
+// or over plain HTTP when the page itself was opened on the IRIS machine.
+export const transportAllowed = (loc) =>
+  loc.protocol === "https:" ||
+  (loc.protocol === "http:" && isLoopbackHost(loc.hostname));
+export const TRANSPORT_BLOCKED =
+  "Sign-in blocked: this page was opened over plain HTTP on a non-local address, so it will not send your IRIS password. Open it over HTTPS, or on the IRIS machine itself through http://localhost.";
+
+const failure = (status, message) =>
+  Object.assign(new Error(message), { status });
+
+export function createIrisAPI({
+  fetcher = (...args) => globalThis.fetch(...args),
+  location: loc = globalThis.location,
+  now = () => Date.now(),
+  onSessionEnd = () => {},
+} = {}) {
+  const origin = loc.origin;
+  let session = null,
+    signingIn = null,
+    expiry = null,
+    failures = { count: 0, until: 0 };
+
+  function end(reason) {
+    if (signingIn) signingIn.abort();
+    signingIn = null;
+    if (!session) return false;
+    const ended = session;
+    session = null;
+    clearTimeout(expiry);
+    ended.controller.abort();
+    ended.credentials = { username: "", password: "" };
+    ended.plans.clear();
+    ended.auditJob = null;
+    if (reason) onSessionEnd(reason);
+    return true;
+  }
+
+  // Same-origin IRIS requests only, under /api/admin or /api/relay, and only over
+  // an allowed transport; everything else is refused before fetch is called.
+  function sessionUpstream(signal) {
+    const send = createUpstream({
+      fetcher,
+      target: origin,
+      init: { credentials: "omit", cache: "no-store" },
+      signal,
+      describeFailures: true,
+    });
+    return (credentials, path, method, data, base = "/api/admin", timeoutMs) => {
+      if (!transportAllowed(loc))
+        return { ok: false, status: 403, error: TRANSPORT_BLOCKED };
+      const url = new URL(base + path, origin);
+      if (
+        url.origin !== origin ||
+        !IRIS_BASES.some((prefix) => url.pathname.startsWith(prefix))
+      )
+        return {
+          ok: false,
+          status: 400,
+          error: "Relay only calls /api/admin and /api/relay on this IRIS server.",
+        };
+      return send(credentials, path, method, data, base, timeoutMs);
+    };
+  }
+
+  async function login(input) {
+    if (!transportAllowed(loc)) throw failure(403, TRANSPORT_BLOCKED);
+    if (failures.until > now() && failures.count >= 5)
+      throw failure(429, "Too many failed sign-ins. Try again in five minutes.");
+    if (!validCredentials(input))
+      throw failure(400, "Enter your IRIS username and password.");
+    if (signingIn) throw failure(409, "A sign-in is already in progress.");
+    end(null);
+    const controller = new AbortController();
+    signingIn = controller;
+    const credentials = { username: input.username, password: input.password };
+    const upstream = sessionUpstream(controller.signal);
+    let signed;
+    try {
+      signed = await signIn(credentials, upstream);
+    } finally {
+      if (signingIn === controller) signingIn = null;
+    }
+    if (controller.signal.aborted) throw failure(401, "Sign-in was cancelled.");
+    if (signed.status !== 200) {
+      if (signed.status === 401)
+        failures = {
+          count: (failures.until > now() ? failures.count : 0) + 1,
+          until: now() + 300000,
+        };
+      throw failure(signed.status, signed.error);
+    }
+    failures = { count: 0, until: 0 };
+    session = {
+      credentials,
+      info: signed.info,
+      plans: new Map(),
+      expires: now() + SESSION_LIFETIME_MS,
+      controller,
+      upstream,
+    };
+    expiry = setTimeout(
+      () => end("Your Relay session expired after 30 minutes. Sign in again."),
+      SESSION_LIFETIME_MS,
+    );
+    expiry.unref?.();
+    return { info: signed.info, resources, server: origin };
+  }
+
+  async function handle(path, method, data) {
+    // A path on this API, never a URL: IRIS requests are built by the routes alone.
+    if (typeof path !== "string" || !path.startsWith("/api/"))
+      throw failure(404, "Not found.");
+    const url = new URL(path, "http://relay.invalid");
+    // Mirror the network boundary of the Node server: plain JSON input, bounded size.
+    let input = {};
+    if (method !== "GET") {
+      const raw = JSON.stringify(data ?? {});
+      if (new TextEncoder().encode(raw).length > MAX_INPUT_BYTES)
+        throw failure(413, "Request too large");
+      input = JSON.parse(raw);
+    }
+    if (url.pathname === "/api/config" && method === "GET")
+      return { demo: false, irisServed: true };
+    if (url.pathname === "/api/login" && method === "POST") return login(input);
+    if (!session || session.expires < now()) {
+      if (session)
+        end("Your Relay session expired after 30 minutes. Sign in again.");
+      throw failure(401, "Sign in to your IRIS instance.");
+    }
+    if (url.pathname === "/api/session" && method === "GET")
+      return { info: session.info, resources, server: origin };
+    if (url.pathname === "/api/logout" && method === "POST") {
+      end(null);
+      return { ok: true };
+    }
+    const current = session;
+    const handled = await route(
+      {
+        method,
+        pathname: url.pathname,
+        searchParams: url.searchParams,
+        readBody: async () => input,
+      },
+      { session: current, upstream: current.upstream, server: origin },
+    );
+    if (!handled) throw failure(404, "Not found.");
+    if (session !== current)
+      throw failure(401, "Signed out. The result was discarded.");
+    if (handled.status >= 400)
+      throw failure(handled.status, handled.data?.error || "Request failed");
+    // A copy, as if it had crossed the network: callers cannot alter stored plans.
+    return JSON.parse(JSON.stringify(handled.data));
+  }
+
+  const api = async (path, method = "GET", data) => {
+    try {
+      return await handle(path, method, data);
+    } catch (error) {
+      if (Number.isInteger(error?.status))
+        throw failure(error.status, error.message);
+      throw failure(
+        500,
+        "An internal error occurred in the page: " +
+          (error?.message || String(error)),
+      );
+    }
+  };
+  api.signedIn = () => !!session;
+  api.signOut = () => end(null);
+  return api;
+}

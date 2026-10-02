@@ -2,7 +2,7 @@
 
 An operations workspace for InterSystems IRIS 2026.2. Investigate an instance, make a management change safely, and leave a clear handover for the next operator.
 
-IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS extension (ObjectScript REST class and an Embedded Python log reader). Every change is reviewed first, re-checked right before it is applied, applied once, and then read back from IRIS. A baseline comparison and a Markdown/JSON export show what changed during the shift.
+IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS extension (ObjectScript REST class and an Embedded Python log reader). Install it with IPM and IRIS itself serves the whole UI, with no Node.js or Python server; or run it with Docker Compose or Node. Every change is reviewed first, re-checked right before it is applied, applied once, and then read back from IRIS. A baseline comparison and a Markdown/JSON export show what changed during the shift.
 
 ![IRIS Relay: a reviewed task change, applied and verified in IRIS](docs/images/review-verified.png)
 
@@ -18,13 +18,13 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 
 1. **Watch** the [1:34 guided tour](https://youtu.be/A5OkIV2Q3xA).
 2. **Try it without installing anything:** open the [live IRIS demo](https://78-17-93-244.sslip.io) (shared login on the page) and follow its 5-step guided tour, or use the [no-install walkthrough](https://rafaorlando3.github.io/iris-relay/) with fictional data.
-3. **Run it yourself:** `docker compose up -d` starts IRIS 2026.2 and Relay in about 2 minutes ([Quick start](#quick-start-one-command-about-2-minutes)).
+3. **Run it yourself:** `docker compose up -d` starts IRIS 2026.2 and Relay in about 2 minutes ([Quick start](#quick-start-one-command-about-2-minutes)). On an IRIS you already have: `zpm "install iris-relay"`, then open `/relay/index.html` on that IRIS ([IPM](#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)).
 
 | Judging criterion | Where to look |
 | --- | --- |
 | Complexity | Every change is reviewed, re-checked, applied once and read back from IRIS ([How a change works](#how-a-change-works)). Log similarity search runs inside IRIS with Embedded Python and IRIS Vector Search ([New in 0.4](#new-in-04-search-every-log-file-by-similarity-iris-vector-search)). |
 | Clarity of instructions | One-command [Quick start](#quick-start-one-command-about-2-minutes), a 5-minute tour and the full reviewer script in [docs/DEMO.md](docs/DEMO.md). |
-| Developer experience | No runtime npm dependencies, 46 JavaScript and 29 Python tests ([Validation](#validation)), and an IPM package for the IRIS side ([IPM](#install-the-iris-side-on-an-existing-instance-ipm)). |
+| Developer experience | No runtime npm dependencies, 64 JavaScript and 29 Python tests ([Validation](#validation)), and an IPM package that installs the full UI, served by IRIS with no Node.js ([IPM](#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)). |
 | Applicability | Shift handover with baseline comparison and Markdown/JSON export; archived `messages.old_*` logs from Community idea [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966). |
 | Usability | Before/after preview on every change, a plain "Applied and verified in IRIS" status and a guided tour on a labelled incident ([At a glance](#at-a-glance)). |
 
@@ -74,17 +74,32 @@ Both paths run the same `scripts/bootstrap.py` inside the container. Stop with C
 
 Suggested 5-minute tour: Scheduled tasks → Capture baseline → Suspend `Relay demonstration task` → Confirm → Compare changes → Resume it. Then open Log investigation and pick an archived `messages.old_*` file (with the lab script, run `python3 scripts/lab-rotate-log.py` first to create one). Finish with Export handover. The full reviewer script is in [docs/DEMO.md](docs/DEMO.md).
 
-## Install the IRIS side on an existing instance (IPM)
+## Install with IPM: the full UI served by IRIS (no Node.js)
 
-The IRIS part of Relay (the `/api/relay` endpoints, the Embedded Python log reader for current and archived `messages.log` files and the similarity search table) is an IPM package. It creates no users and no demo data.
+From 0.5.0 the IPM package installs the whole IRIS Relay web UI and IRIS serves it. Nothing else runs: no Node.js, no Python server, no extra container.
 
 ```
 USER> zpm "install iris-relay"
 ```
 
-Before it appears in the public registry, or to try a local checkout: `zpm "load /path/to/iris-relay"`. It installs `Relay.Api`, `Relay.LogReader` and `Relay.LogLine` in the current namespace, copies `log_reader.py` and `log_vectors.py` to `<manager directory>/relay/`, and creates the `/api/relay` web application with password authentication; every endpoint also checks `%Admin_Operate:U`. Then point the Relay UI at that instance: `IRIS_URL=https://your-test-instance.example npm start` (HTTPS is required for anything but loopback). `zpm "uninstall iris-relay"` removes it.
+Then open `https://<your IRIS host>/relay/index.html`, or `http://localhost:52773/relay/index.html` on the IRIS machine itself, and sign in with your IRIS account. It is the same UI as the Node version, with every area: system overview, web applications and the REST explorer, permissions, security, tasks, log investigation with the similarity search, audit, baseline comparison and the handover export. Before 0.5.0 reaches the public registry, or to try a local checkout: `zpm "load /path/to/iris-relay"`.
 
-From 0.4.1 the package also installs **Relay Lite**, a single static page that IRIS itself serves at `https://<host>/relay/index.html` (no Node.js or Python server; `/relay/` alone returns 404 because IRIS does not list folders). Sign in with an IRIS user that has `%Admin_Operate:U`. The page sends the credentials as HTTP Basic and keeps them only in page memory, so it refuses to send them over plain HTTP unless the page was opened on the IRIS machine itself (`http://localhost:52773/relay/index.html`, `127.0.0.1` or `[::1]`); for anything else, serve IRIS over HTTPS. The `/relay` web application serves static files only: CSP/ZEN class pages and auto-compile are off, and it allows unauthenticated access to those files alone; all data still comes from `/api/relay`, which requires a password and `%Admin_Operate:U`. Relay Lite pages through the log sources and runs the similarity search; the search needs SQL `SELECT` on `Relay.LogLine`, and refreshing the index needs `INSERT` and `DELETE` (for example `GRANT SELECT, INSERT, DELETE ON Relay.LogLine TO <user>`; the grant has to be repeated after a reinstall, because the table is recreated). The similarity is lexical (hashed words and character trigrams, no language model), over the bounded index described in [New in 0.4](#new-in-04-search-every-log-file-by-similarity-iris-vector-search) (3,000 recent lines per file, 20,000 in total, queries up to 200 characters). Management actions, audit, explorer and tasks stay in the full Relay UI above.
+**How it works.** `/relay` is a static-files-only web application: CSP/ZEN class pages and auto-compile are off, and `/relay/` alone returns 404 because IRIS does not list folders. The page runs the Relay API in the browser with the same modules the Node server uses (review, re-check right before applying, apply once, read back, allowlisted explorer operations, a 2 MiB response cap, timeouts and redaction) and calls IRIS on the same origin: the SysAdmin REST API at `/api/admin` and the package's `/api/relay` endpoints, as your own IRIS account. IRIS stays in charge of authorization.
+
+**Credentials.** The page keeps your password in memory only, never in browser storage or cookies, and sends it to IRIS as HTTP Basic on each request. So it signs in only over HTTPS, or over plain HTTP when the page was opened on the IRIS machine itself (`localhost`, `127.0.0.1` or `[::1]`); on any other plain-HTTP address the sign-in is disabled and nothing is sent. Signing out, or 30 minutes after sign-in, drops the credentials and cancels the requests in flight; reloading the page also signs you out. The page does not run inside a frame.
+
+**What the account needs.**
+
+* Password authentication on `/api/admin` (the default on IRIS 2026.2).
+* The IRIS permissions for the areas you use. `%Manager` covers every Relay view and change. With less, IRIS refuses what the account may not do, and Relay marks those views Restricted and shows the reason.
+* For the log views and the similarity search: `%Admin_Operate:U`, plus the database role of the namespace where you installed the package (for example `%DB_USER` for USER), because `/api/relay` runs there.
+* For the similarity search: SQL `SELECT` on `Relay.LogLine`, and `INSERT` and `DELETE` to refresh the index, for example `GRANT SELECT, INSERT, DELETE ON Relay.LogLine TO <user>` in that namespace. Repeat the grant after a reinstall, because the table is recreated. The similarity is lexical (hashed words and character trigrams, no language model), over the bounded index described in [New in 0.4](#new-in-04-search-every-log-file-by-similarity-iris-vector-search) (3,000 recent lines per file, 20,000 in total, queries up to 200 characters).
+
+**What gets installed.** `Relay.Api`, `Relay.LogReader` and `Relay.LogLine` in the current namespace; `log_reader.py` and `log_vectors.py` in `<manager directory>/relay/`; the UI files in `<IRIS install directory>/csp/relay/`; the `/relay` web application (static files) and `/api/relay` (password authentication, and every endpoint also checks `%Admin_Operate:U`). It creates no users and no demo data. `zpm "uninstall iris-relay"` removes all of it. Relay Lite, the single page from 0.4.1 with the log views and the similarity search only, stays at `/relay/lite.html`.
+
+**Only in the Node version:** the public demo mode (a shared account limited to the Relay demonstration objects), the sign-in throttle per client address, a session that survives a page reload (an HttpOnly cookie), and a connection to IRIS on another host: `IRIS_URL=https://your-test-instance.example npm start`.
+
+The files in `web/relay` are built from `public/` and the root modules by `npm run build:iris`; a test fails if they drift from their sources.
 
 ## What you can do
 
@@ -137,24 +152,37 @@ flowchart LR
 * Responses are capped (100 rows, 64 KiB log pages) and credential-like fields are redacted before they reach the browser.
 * The extension (`src/Relay`) is installed by `scripts/lab.py`; see "Connect to an existing test instance" below to install it elsewhere.
 
+Installed with IPM, IRIS serves the UI and the Relay API runs in the browser, with the same modules (`routes.mjs` and the logic it uses; `iris-api.mjs` is the browser side):
+
+```mermaid
+flowchart LR
+  B["Browser<br/>Relay UI and Relay API"] -->|static files| W["/relay<br/>static files only"]
+  B -->|Basic auth as the operator, same origin| A["/api/admin/v2<br/>SysAdmin API"]
+  B -->|Basic auth as the operator, same origin| X["/api/relay<br/>Relay.Api + Relay.LogReader"]
+  X --> P["log_reader.py<br/>Embedded Python"]
+  W --> I[("InterSystems IRIS 2026.2")]
+  A --> I
+  P --> I
+```
+
 ## Technology used
 
-Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose` lab), Embedded Python (log reader and embeddings running inside IRIS), IRIS Vector Search (`VECTOR` column and `VECTOR_COSINE`), an IPM package for the IRIS side (`module.xml`), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. The live demo runs a real disposable IRIS instance; the separate GitHub Pages walkthrough uses fictional data.
+Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose` lab), Embedded Python (log reader and embeddings running inside IRIS), IRIS Vector Search (`VECTOR` column and `VECTOR_COSINE`), an IPM package that installs the full UI, served by IRIS, and the IRIS side (`module.xml`), the SysAdmin REST API v2, and the Community Opportunity idea DPI-I-966. The live demo runs a real disposable IRIS instance; the separate GitHub Pages walkthrough uses fictional data.
 
 ## Validation
 
 [![tests](https://github.com/rafaorlando3/iris-relay/actions/workflows/tests.yml/badge.svg)](https://github.com/rafaorlando3/iris-relay/actions/workflows/tests.yml)
 
 ```sh
-npm test            # 46 JavaScript tests
+npm test            # 64 JavaScript tests
 npm run test:logs   # 29 Python tests (log reader, similarity index, lab helper, demo incident)
 ```
 
-With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). See [docs/VALIDATION.md](docs/VALIDATION.md).
+With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). The 0.5.0 IPM path was checked end to end in Chromium on a fresh IRIS 2026.2 (install, every UI area, changes read back from IRIS, uninstall). See [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Limitations
 
-This is an experimental tool for authorized administrators, not a replacement for the whole Management Portal and not a production readiness claim. It does not edit secret values, import or rotate keys, create roles, test a full OAuth provider flow, terminate processes, parse journal contents or read every subsystem log. Session history is not a durable audit. Page search applies to the loaded page; similarity search covers the bounded index described above and ranks by wording, not meaning.
+This is an experimental tool for authorized administrators, not a replacement for the whole Management Portal and not a production readiness claim. It does not edit secret values, import or rotate keys, create roles, test a full OAuth provider flow, terminate processes, parse journal contents or read every subsystem log. Session history is not a durable audit. In the IPM version, reloading the page signs you out and a session lasts at most 30 minutes. Page search applies to the loaded page; similarity search covers the bounded index described above and ranks by wording, not meaning.
 
 ## Detailed guide
 

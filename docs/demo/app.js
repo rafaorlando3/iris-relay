@@ -6,6 +6,27 @@ import { configurationForm } from "./configuration-ui.js";
 import { mountAudit } from "./audit-ui.js";
 import { mountExplorer } from "./explorer-ui.js";
 import { changesBetween, handoverMarkdown } from "./reports.js";
+// IRIS-served build (IPM package, web/relay): the Relay API runs in this page and
+// calls IRIS on the same origin. iris-api.js is built from iris-api.mjs by
+// scripts/build-iris-ui.mjs; the Node server never loads it.
+const irisMode = document.documentElement.dataset.mode === "iris";
+const iris = irisMode ? await import("./iris-api.js") : null;
+const irisAPI = iris
+  ? iris.createIrisAPI({
+      onSessionEnd(reason) {
+        if (!session) return;
+        disconnected();
+        $("login-error").textContent = reason;
+      },
+    })
+  : null;
+const irisBlocked = !irisMode
+  ? ""
+  : window.top !== window.self
+    ? "IRIS Relay does not run inside a frame. Open this page directly."
+    : iris.transportAllowed(location)
+      ? ""
+      : iris.TRANSPORT_BLOCKED;
 const $ = (id) => document.getElementById(id);
 let session = null,
   current = "overview",
@@ -21,6 +42,7 @@ const el = (tag, text, cls) => {
 };
 async function api(path, method = "GET", data) {
   if (demoAPI) return demoAPI(path, method, data);
+  if (irisAPI) return irisAPI(path, method, data);
   const r = await fetch(path, {
     method,
     headers:
@@ -87,6 +109,8 @@ function connected(data) {
   load();
 }
 function disconnected() {
+  // IRIS-served build: forget the credentials and cancel requests in flight too.
+  irisAPI?.signOut();
   session = null;
   activity = [];
   $("activity-list").replaceChildren();
@@ -108,9 +132,17 @@ function disconnected() {
   pendingChange = null;
   resetTour();
 }
+if (irisMode) {
+  $("login").querySelector("button[type=submit]").disabled = !!irisBlocked;
+  $("login-error").textContent = irisBlocked;
+}
 $("login").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const b = e.target.querySelector("button");
+  const b = e.target.querySelector("button[type=submit]");
+  if (irisBlocked) {
+    $("login-error").textContent = irisBlocked;
+    return;
+  }
   b.disabled = true;
   $("login-error").textContent = "";
   try {
@@ -464,7 +496,7 @@ api("/api/session")
 
 // Public demo hosting: the server says whether it runs in demo mode and which
 // shared account to use. The static walkthrough (demoMode) has no such endpoint.
-if (!demoMode)
+if (!demoMode && !irisMode)
   fetch("/api/config")
     .then((r) => (r.ok ? r.json() : { demo: false }))
     .then((config) => {

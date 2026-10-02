@@ -114,6 +114,10 @@ p {
   color: #6b7e83;
   font-size: 12px;
 }
+.muted a {
+  color: #17695e;
+  font-weight: 600;
+}
 .title-row {
   display: flex;
   justify-content: space-between;

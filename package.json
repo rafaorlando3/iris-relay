@@ -1,6 +1,6 @@
 {
   "name": "iris-relay",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:logs": "python3 -m unittest discover -s test -p \"test_*.py\""
+    "test:logs": "python3 -m unittest discover -s test -p \"test_*.py\"",
+    "build:iris": "node scripts/build-iris-ui.mjs"
   }
 }

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IRIS Relay Lite</title>
+<style>
+:root{--bg:#f7f7f5;--fg:#1d2433;--muted:#5b6475;--line:#d9dce3;--accent:#2457c5;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#14171d;--fg:#e6e8ee;--muted:#9aa3b5;--line:#2c323d;--accent:#7aa2ff;--card:#1b1f27}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:.2rem 0}p.note{color:var(--muted);margin:.2rem 0 1rem}
+section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin:12px 0}
+h2{font-size:1.05rem;margin:0 0 8px}
+form,.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input,select,button{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+button{background:var(--accent);color:#fff;border-color:var(--accent);cursor:pointer}button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
+td.msg{word-break:break-word}.status{color:var(--muted);min-height:1.2em}
+.wrap{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+<h1>IRIS Relay Lite</h1>
+<p class="note">Served by IRIS from the iris-relay IPM package. Reads messages.log and its rotations through <code>/api/relay</code> and runs vector similarity search inside IRIS. No Node.js or Python server. The full IRIS Relay UI (management, tasks, audit, REST explorer and handover) is at <a href="./index.html">index.html</a>, served by IRIS from the same package.</p>
+
+<section id="login">
+<h2>Sign in</h2>
+<form id="loginForm">
+<input id="user" autocomplete="username" placeholder="IRIS user" required aria-label="IRIS user">
+<input id="pass" type="password" autocomplete="current-password" placeholder="Password" required aria-label="Password">
+<button id="signin">Sign in</button>
+</form>
+<p class="status" id="loginStatus">Needs %Admin_Operate:U. Credentials stay in this page's memory only and go to IRIS as HTTP Basic on each request, so the page sends them only over HTTPS or on this machine (localhost, 127.0.0.1, [::1]).</p>
+</section>
+
+<section id="logs" hidden>
+<h2>Logs</h2>
+<div class="bar">
+<select id="source" aria-label="Log source"></select>
+<button id="latest">Load latest</button>
+<button id="older" disabled>Older records</button>
+<button id="signout" type="button">Sign out</button>
+</div>
+<p class="status" id="logStatus"></p>
+<div class="wrap" id="logRows"></div>
+</section>
+
+<section id="search" hidden>
+<h2>Similar log lines (IRIS Vector Search)</h2>
+<form id="searchForm">
+<input id="q" maxlength="200" required placeholder="For example: journal switch, license exceeded" aria-label="Search text" style="flex:1;min-width:220px">
+<button id="searchBtn">Refresh index and search</button>
+</form>
+<p class="status" id="searchStatus">Searching needs SQL SELECT on Relay.LogLine; refreshing needs INSERT and DELETE.</p>
+<div class="wrap" id="searchRows"></div>
+</section>
+</main>
+<script>
+"use strict";
+const API = "/api/relay";
+const $ = (id) => document.getElementById(id);
+const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = String(text); if (cls) n.className = cls; return n; };
+
+// Credentials travel as HTTP Basic, so they are sent only over HTTPS or to a loopback host.
+const isLoopback = (h) => h === "localhost" || h === "[::1]" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
+const transportAllowed = () => location.protocol === "https:" || (location.protocol === "http:" && isLoopback(location.hostname));
+const BLOCKED = "Sign-in blocked: this page was opened over plain HTTP on a non-local address, so it will not send your IRIS password. Open it over HTTPS, or on the IRIS machine itself through http://localhost.";
+
+// One session per sign-in. Every response is checked against the session and the request
+// that started it, so a late answer from a previous source, search or user is discarded.
+class Stale extends Error {}
+let session = null, signingIn = false, cursor = null, cursorSource = null, logSeq = 0, searchSeq = 0;
+const current = (s) => s !== null && session === s;
+const stale = (e) => e instanceof Stale || (e && e.name === "AbortError");
+
+async function api(s, path, method) {
+  if (!transportAllowed()) throw new Error(BLOCKED);
+  if (!current(s)) throw new Stale();
+  const r = await fetch(API + path, { method: method || "GET", headers: { Authorization: s.auth, Accept: "application/json" }, credentials: "omit", cache: "no-store", signal: s.ctrl.signal });
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = null; }
+  if (!current(s)) throw new Stale();
+  if (r.status === 401) throw new Error("Sign-in failed: wrong user or password.");
+  if (r.status === 403) throw new Error("Permission denied: the user needs %Admin_Operate:U.");
+  if (!r.ok) throw new Error((data && data.error) || ("IRIS answered HTTP " + r.status + "."));
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+function table(headers, rows) {
+  const t = el("table"), h = el("tr");
+  headers.forEach((x) => h.append(el("th", x)));
+  t.append(h);
+  rows.forEach((cells) => { const tr = el("tr"); cells.forEach((c, i) => tr.append(el("td", c, i === cells.length - 1 && headers[i] === "Message" ? "msg" : undefined))); t.append(tr); });
+  return t;
+}
+const size = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + " MiB" : b >= 1024 ? Math.round(b / 1024) + " KiB" : b + " bytes";
+
+function endSession(message) {
+  if (session) session.ctrl.abort();
+  session = null; cursor = null; cursorSource = null; logSeq++; searchSeq++;
+  $("source").replaceChildren(); $("logRows").replaceChildren(); $("searchRows").replaceChildren();
+  $("logStatus").textContent = ""; $("searchStatus").textContent = "";
+  $("logs").hidden = $("search").hidden = true; $("login").hidden = false;
+  $("loginStatus").textContent = message;
+}
+async function loadSources(s) {
+  const r = await api(s, "/log-sources");
+  const sel = $("source"); sel.replaceChildren();
+  for (const x of r.sources) {
+    const o = el("option", x.name + " \u00B7 " + (x.available ? size(x.bytes) : x.status));
+    o.value = x.id; o.disabled = !x.available; sel.append(o);
+  }
+  const first = r.sources.find((x) => x.available);
+  if (first) sel.value = first.id;
+  return Boolean(first);
+}
+async function loadLogs(s, older) {
+  if (!current(s)) return;
+  const seq = ++logSeq, src = $("source").value;
+  const from = older && cursor && cursorSource === src ? cursor : null;
+  $("latest").disabled = $("older").disabled = true;
+  if (!from) { $("logRows").replaceChildren(); cursor = null; cursorSource = null; }
+  $("logStatus").textContent = "Loading " + src + "\u2026";
+  try {
+    const p = new URLSearchParams({ source: src });
+    if (from) p.set("cursor", from);
+    const r = await api(s, "/logs?" + p);
+    if (seq !== logSeq) return;
+    cursor = r.nextCursor || null; cursorSource = cursor ? src : null;
+    $("logRows").replaceChildren(table(["Time", "Level", "Message"], r.rows.map((x) => [x.Time || "Not reported", x.Level ?? "Not reported", (x.Message ?? x.Text ?? "") + (x.MessageTruncated ? " [message shortened]" : "")])));
+    $("logStatus").textContent = r.rows.length + " complete lines from " + r.source + " \u00B7 " + new Date(r.observedAt).toLocaleString() + " \u00B7 " + (cursor ? "Older data available." : "Beginning of file reached.");
+  } catch (e) {
+    if (stale(e) || seq !== logSeq || !current(s)) return;
+    cursor = null; cursorSource = null; $("logRows").replaceChildren();
+    $("logStatus").textContent = "Could not load " + src + ": " + e.message;
+  }
+  if (seq === logSeq && current(s)) { $("latest").disabled = false; $("older").disabled = !cursor; }
+}
+
+if (!transportAllowed()) {
+  $("signin").disabled = $("user").disabled = $("pass").disabled = true;
+  $("loginStatus").textContent = BLOCKED;
+}
+$("loginForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (signingIn || session) return;
+  if (!transportAllowed()) { $("pass").value = ""; $("loginStatus").textContent = BLOCKED; return; }
+  signingIn = true; $("signin").disabled = true;
+  const s = { auth: "Basic " + btoa(unescape(encodeURIComponent($("user").value + ":" + $("pass").value))), ctrl: new AbortController() };
+  $("pass").value = "";
+  session = s;
+  $("loginStatus").textContent = "Checking\u2026";
+  try {
+    const any = await loadSources(s);
+    $("login").hidden = true; $("logs").hidden = false; $("search").hidden = false; $("searchBtn").disabled = false;
+    $("searchStatus").textContent = "Searching needs SQL SELECT on Relay.LogLine; refreshing needs INSERT and DELETE.";
+    if (any) await loadLogs(s, false); else $("logStatus").textContent = "No readable log source.";
+  } catch (e) {
+    if (!stale(e) && current(s)) endSession(e.message);
+  } finally {
+    signingIn = false; $("signin").disabled = false;
+  }
+});
+$("source").addEventListener("change", () => loadLogs(session, false));
+$("latest").addEventListener("click", () => loadLogs(session, false));
+$("older").addEventListener("click", () => loadLogs(session, true));
+$("signout").addEventListener("click", () => endSession("Signed out."));
+$("searchForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const s = session;
+  if (!current(s)) return;
+  const seq = ++searchSeq, q = $("q").value.trim(), btn = $("searchBtn"), st = $("searchStatus");
+  btn.disabled = true; $("searchRows").replaceChildren();
+  st.textContent = "Refreshing the index inside IRIS\u2026";
+  try {
+    const i = await api(s, "/log-index", "POST");
+    if (seq !== searchSeq) return;
+    st.textContent = "Index: " + i.totalLines + " lines from " + i.files + " files. ";
+    const r = await api(s, "/log-search?" + new URLSearchParams({ q, limit: "15" }));
+    if (seq !== searchSeq) return;
+    st.textContent += r.rows.length + " result group(s) among the " + r.candidates + " closest lines.";
+    $("searchRows").replaceChildren(r.rows.length ? table(["Similarity", "Seen", "Time", "Level", "Message"], r.rows.map((x) => [Number(x.Score).toFixed(3), x.Occurrences + "\u00D7 in " + x.Files.length + " file(s)", x.Time || "Not reported", x.Level ?? "Not reported", x.Message])) : el("p", "No similar lines found."));
+  } catch (e) {
+    if (stale(e) || seq !== searchSeq || !current(s)) return;
+    st.textContent = e.message; $("searchRows").replaceChildren();
+  } finally {
+    if (seq === searchSeq && current(s)) btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
