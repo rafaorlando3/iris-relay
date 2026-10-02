@@ -4,7 +4,14 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { resources } from "./resources.mjs";
-import { createUpstream, route, signIn, validCredentials } from "./routes.mjs";
+import {
+  changePassword,
+  createUpstream,
+  PORTAL_PATH,
+  route,
+  signIn,
+  validCredentials,
+} from "./routes.mjs";
 export { DEMO_TARGETS, DEMO_TASK } from "./routes.mjs";
 
 const sessionLifetime = 30 * 60 * 1000;
@@ -146,30 +153,64 @@ export function createApp({
         .find((v) => v.startsWith("relay_session="))
         ?.slice(14);
       const session = sessions.get(sid);
-      if (url.pathname === "/api/login" && req.method === "POST") {
+      const signInPaths = ["/api/login", "/api/password"];
+      if (signInPaths.includes(url.pathname) && req.method === "POST") {
         const key = clientKey(req);
         const throttle = failures.get(key);
+        const failed = () =>
+          failures.set(key, {
+            count: (throttle?.until > Date.now() ? throttle.count : 0) + 1,
+            until: Date.now() + 300000,
+          });
         if (throttle?.until > Date.now() && throttle.count >= 5)
           return reply(res, 429, {
             error: "Too many failed sign-ins. Try again in five minutes.",
           });
-        const credentials = await body(req);
-        if (!validCredentials(credentials))
-          return reply(res, 400, {
-            error: "Enter your IRIS username and password.",
+        const input = await body(req);
+        // The answer to a refused sign-in: the reason IRIS gave, and where the
+        // Management Portal offers its own password change.
+        const refusal = (result) =>
+          reply(res, result.status, {
+            error: result.error,
+            ...(result.reason ? { reason: result.reason } : {}),
+            ...(["no-extension", "unknown"].includes(result.reason)
+              ? { portal: target.origin + PORTAL_PATH }
+              : {}),
           });
-        if (demo && credentials.username !== demo.username)
-          return reply(res, 403, {
-            error: `This public demo only accepts the shared account ${demo.username}.`,
-          });
+        let credentials = input;
+        if (url.pathname === "/api/password") {
+          // The shared demo account must keep the password shown on the sign-in page.
+          if (demo)
+            return reply(res, 403, {
+              error: "The public demo does not change passwords.",
+            });
+          const changed = await changePassword(input, upstream);
+          if (changed.status !== 200) {
+            if (changed.failed) failed();
+            return refusal(changed);
+          }
+          credentials = changed.credentials;
+        } else {
+          if (!validCredentials(credentials))
+            return reply(res, 400, {
+              error: "Enter your IRIS username and password.",
+            });
+          if (demo && credentials.username !== demo.username)
+            return reply(res, 403, {
+              error: `This public demo only accepts the shared account ${demo.username}.`,
+            });
+        }
         const signed = await signIn(credentials, upstream);
         if (signed.status !== 200) {
-          if (signed.status === 401)
-            failures.set(key, {
-              count: (throttle?.until > Date.now() ? throttle.count : 0) + 1,
-              until: Date.now() + 300000,
+          if (credentials !== input)
+            return reply(res, signed.status, {
+              error: "IRIS changed the password, but signing in with the new one failed: " + signed.error,
+              passwordChanged: true,
             });
-          return reply(res, signed.status, { error: signed.error });
+          // A correct password that IRIS wants changed is not a failed guess.
+          if (signed.status === 401 && signed.reason !== "password-change-required")
+            failed();
+          return refusal(signed);
         }
         failures.delete(key);
         if (sid) sessions.delete(sid);
@@ -191,7 +232,13 @@ export function createApp({
         return reply(
           res,
           200,
-          { info: signed.info, csrf, resources, server: target.origin },
+          {
+            info: signed.info,
+            csrf,
+            resources,
+            server: target.origin,
+            ...(url.pathname === "/api/password" ? { passwordChanged: true } : {}),
+          },
           {
             "Set-Cookie": `relay_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800${origin.startsWith("https:") ? "; Secure" : ""}`,
           },

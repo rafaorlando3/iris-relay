@@ -430,3 +430,99 @@ test("sessions are bounded and proxy-forwarded addresses get their own sign-in t
   assert.equal(await status(cookies[0]), 401, "oldest session evicted");
   assert.equal(await status(cookies.at(-1)), 200);
 });
+
+// IRIS 2026.2 as measured for Relay.Api /account (see test/iris-api.test.mjs relayAccount).
+function expiredIris(state, { extension = true } = {}) {
+  return async (u, init = {}) => {
+    state.calls.push(`${init.method || "GET"} ${u.pathname}`);
+    const auth = init.headers?.Authorization || "";
+    const basicOk = auth === "Basic " + btoa("tester:" + state.password);
+    if (u.pathname === "/api/relay/account") {
+      if (!extension) return new Response("Not Found", { status: 404 });
+      const refuse = (body) => new Response(JSON.stringify(body), { status: 401, headers: { "Content-Type": "application/json" } });
+      if (init.method === "POST") {
+        const form = new URLSearchParams(init.body);
+        if (auth || form.get("IRISUsername") !== "tester" || form.get("IRISOldPassword") !== state.password)
+          return refuse({ reason: "denied" });
+        if (form.get("IRISPassword").length < 8)
+          return refuse({ reason: "password-rejected", detail: "ERROR #845: Password does not match length or pattern requirements" });
+        state.password = form.get("IRISPassword");
+        state.mustChange = false;
+        return new Response(JSON.stringify({ username: "Tester" }), { status: 200 });
+      }
+      if (!basicOk) return (state.invalidLogins++, refuse({ reason: "denied" }));
+      if (state.mustChange) return (state.invalidLogins++, refuse({ reason: "password-change-required" }));
+      return new Response(JSON.stringify({ username: "Tester" }), { status: 200 });
+    }
+    if (!basicOk || state.mustChange) return (state.invalidLogins++, new Response("", { status: 401 }));
+    return ok({ apiVersion: 2, username: "Tester" });
+  };
+}
+
+test("expired password: the server says why, IRIS changes it after a counted check, and the new one signs in", async (t) => {
+  const state = { password: "test-only-password", mustChange: true, invalidLogins: 0, calls: [] };
+  const { url, login } = await setup(t, expiredIris(state));
+  const r = await login();
+  assert.equal(r.status, 401);
+  assert.equal(r.headers.get("set-cookie"), null);
+  assert.equal((await r.json()).reason, "password-change-required");
+  assert.deepEqual(state.calls, ["GET /api/relay/account"], "one IRIS login attempt, no retry on /api/admin");
+  const change = (data, headers = {}) =>
+    fetch(url + "/api/password", {
+      method: "POST",
+      headers: { Origin: url, "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ username: "tester", ...data }),
+    });
+  const sent = state.calls.length;
+  assert.equal((await change({ oldPassword: "test-only-password", newPassword: "fresh-password-1" }, { Origin: "https://untrusted.example" })).status, 403);
+  assert.equal(state.calls.length, sent, "a cross-origin change never reaches IRIS");
+  const wrong = await change({ oldPassword: "guess", newPassword: "fresh-password-1" });
+  assert.equal(wrong.status, 401);
+  assert.match((await wrong.json()).error, /refused the current password/);
+  assert.equal(state.invalidLogins, 2, "IRIS counted the wrong current password");
+  assert.ok(!state.calls.includes("POST /api/relay/account"));
+  const rejected = await change({ oldPassword: "test-only-password", newPassword: "short" });
+  assert.equal(rejected.status, 422);
+  assert.equal((await rejected.json()).error, "IRIS did not accept the new password: ERROR #845: Password does not match length or pattern requirements");
+  assert.equal(state.password, "test-only-password");
+  const done = await change({ oldPassword: "test-only-password", newPassword: "fresh-password-1" });
+  assert.equal(done.status, 200);
+  const body = await done.json();
+  assert.equal(body.passwordChanged, true);
+  assert.equal(state.password, "fresh-password-1");
+  const cookie = done.headers.get("set-cookie").split(";")[0];
+  assert.equal((await fetch(url + "/api/session", { headers: { Cookie: cookie } })).status, 200);
+  // The old password stops working; a change for an account IRIS does not ask to change is refused.
+  assert.equal((await login()).status, 401);
+  const again = await change({ oldPassword: "fresh-password-1", newPassword: "fresh-password-2" });
+  assert.equal(again.status, 409);
+  assert.equal(state.password, "fresh-password-1");
+});
+
+test("public demo never changes passwords; without the extension Relay points to the Management Portal", async (t) => {
+  const calls = [];
+  const { url } = await demoSetup(t, async (u) => (calls.push(u.pathname), ok({ apiVersion: 2 })));
+  const demo = await fetch(url + "/api/password", {
+    method: "POST",
+    headers: { Origin: url, "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "RelayDemoOperator", oldPassword: "public-demo", newPassword: "taken-over-1" }),
+  });
+  assert.equal(demo.status, 403);
+  assert.equal(calls.length, 0);
+  const state = { password: "test-only-password", mustChange: true, invalidLogins: 0, calls: [] };
+  const { url: plain, login } = await setup(t, expiredIris(state, { extension: false }));
+  const r = await login();
+  assert.equal(r.status, 401);
+  const refused = await r.json();
+  assert.equal(refused.reason, "no-extension");
+  assert.equal(refused.portal, "http://127.0.0.1:52785/csp/sys/UtilHome.csp");
+  const change = await fetch(plain + "/api/password", {
+    method: "POST",
+    headers: { Origin: plain, "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "tester", oldPassword: "test-only-password", newPassword: "fresh-password-1" }),
+  });
+  assert.equal(change.status, 501);
+  assert.match((await change.json()).error, /Management Portal/);
+  assert.ok(!state.calls.some((c) => c.startsWith("POST")));
+  assert.equal(state.password, "test-only-password");
+});

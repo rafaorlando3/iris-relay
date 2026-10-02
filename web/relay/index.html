@@ -65,9 +65,48 @@
             views and the similarity search only.
           </p>
           <p id="login-error" role="alert"></p>
+          <p id="login-help" class="muted" hidden></p>
+        </form>
+        <form id="password-change" hidden>
+          <h2>Change your IRIS password</h2>
+          <p id="password-reason" class="muted"></p>
+          <label
+            >IRIS username<input
+              name="username"
+              autocomplete="username"
+              required /></label
+          ><label
+            >Current password<input
+              name="oldPassword"
+              type="password"
+              autocomplete="current-password"
+              required /></label
+          ><label
+            >New password<input
+              name="newPassword"
+              type="password"
+              autocomplete="new-password"
+              required /></label
+          ><label
+            >Repeat the new password<input
+              name="repeatPassword"
+              type="password"
+              autocomplete="new-password"
+              required /></label
+          ><button class="primary" type="submit" id="password-submit">
+            Change password and sign in <span>&#x2192;</span>
+          </button>
+          <button type="button" id="password-cancel">Back to sign-in</button>
+          <p class="muted">
+            IRIS checks your current password and applies its own password
+            rules. Relay keeps no copy of the old password and uses the new one
+            only for this session.
+          </p>
+          <p id="password-error" role="alert"></p>
         </form>
       </section>
       <section id="workspace" hidden>
+        <p id="notice" class="notice" role="status" hidden></p>
         <div id="public-demo" class="demo-banner" hidden>
           <strong>PUBLIC DEMO &#xB7; SHARED ACCOUNT</strong>
           <p id="public-demo-note"></p>

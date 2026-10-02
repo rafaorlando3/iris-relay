@@ -22,11 +22,14 @@ const json = (data, status = 200, headers = {}) =>
   });
 const ok = (result) => json({ status: { errors: [] }, result });
 
-// A small IRIS stand-in: one user task, one custom web application, the log API.
-function fakeIris(overrides = {}) {
+// A small IRIS stand-in: one user task, one custom web application, the log API, and
+// /api/relay/account as measured on IRIS 2026.2 (see relayAccount).
+function fakeIris(overrides = {}, options = {}) {
   const calls = [];
   const state = {
     password: "right-password",
+    mustChange: false,
+    invalidLogins: 0,
     suspended: false,
     app: { Name: "/relay-demo", NameSpace: "USER", Enabled: false, AutheEnabled: 32 },
     writes: [],
@@ -37,8 +40,12 @@ function fakeIris(overrides = {}) {
     const custom = overrides[u.pathname];
     if (custom) return custom(u, init, state);
     const auth = init.headers?.Authorization || "";
-    if (auth !== "Basic " + btoa("operator:" + state.password))
+    const basicOk = auth === "Basic " + btoa("operator:" + state.password);
+    if (u.pathname === "/api/relay/account") return relayAccount(init, state, basicOk, options);
+    if (!basicOk || state.mustChange) {
+      if (auth) state.invalidLogins++;
       return new Response("", { status: 401 });
+    }
     const p = u.pathname.replace(/^\/api\/admin/, "");
     if (p === "/info") return ok({ apiVersion: 2, username: "operator", serverVersion: "IRIS 2026.2 (test double)" });
     if (p === "/v2/tasks")
@@ -70,6 +77,40 @@ function fakeIris(overrides = {}) {
     return new Response("", { status: 404 });
   };
   return { fetcher, calls, state };
+}
+
+// IRIS 2026.2, Relay.Api /account: a Basic sign-in counts every refusal (also a correct
+// but expired password) and says why; the IRIS login form fields change the password
+// after checking the old one first, then the password rules, and do not count a wrong
+// old password. options.namespace "USER": IRIS answers a refused sign-in with 404 there.
+function relayAccount(init, state, basicOk, options) {
+  const refuse = (body) =>
+    options.namespace === "USER" ? new Response("Not Found", { status: 404 }) : json(body, 401);
+  const denied = { reason: "denied", error: "Access denied." };
+  if (init.method === "POST" && !init.headers?.Authorization) {
+    const form = new URLSearchParams(init.body);
+    if (form.get("IRISUsername") !== "operator" || form.get("IRISOldPassword") !== state.password)
+      return refuse(denied);
+    if (form.get("IRISPassword").length < 8)
+      return refuse({
+        reason: "password-rejected",
+        error: "IRIS did not accept the new password.",
+        detail: "ERROR #845: Password does not match length or pattern requirements",
+      });
+    state.password = form.get("IRISPassword");
+    state.mustChange = false;
+    state.invalidLogins = 0;
+    return json({ username: "operator" });
+  }
+  if (!basicOk) {
+    state.invalidLogins++;
+    return refuse(denied);
+  }
+  if (state.mustChange) {
+    state.invalidLogins++;
+    return refuse({ reason: "password-change-required", error: "IRIS requires a password change for this account." });
+  }
+  return json({ username: "operator" });
 }
 
 async function signedIn(options = {}) {
@@ -118,6 +159,7 @@ test("sign-in calls IRIS on the same origin with Basic auth, no cookies and no r
   assert.deepEqual(
     iris.calls.map((c) => c.url.href),
     [
+      "http://localhost:52773/api/relay/account",
       "http://localhost:52773/api/admin/info",
       "http://localhost:52773/api/admin/v2/tasks?maxRows=1",
     ],
@@ -336,4 +378,122 @@ test("the browser backend keeps no state in storage or cookies", () => {
     const source = readFileSync(new URL("../" + file, import.meta.url), "utf8");
     assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB|document\.cookie/, file);
   }
+});
+
+test("an expired password: detected at sign-in, changed by IRIS after a counted check, new one signs in", async () => {
+  const iris = fakeIris();
+  iris.state.mustChange = true;
+  const api = createIrisAPI({ fetcher: iris.fetcher, location: LOCAL });
+  await assert.rejects(
+    api("/api/login", "POST", { username: "operator", password: "right-password" }),
+    (e) => e.status === 401 && e.reason === "password-change-required" && /requires a new password/.test(e.message),
+  );
+  // One IRIS login attempt, never a second one on /api/admin.
+  assert.deepEqual(iris.calls.map((c) => c.url.pathname), ["/api/relay/account"]);
+  assert.equal(iris.state.invalidLogins, 1);
+  assert.equal(api.signedIn(), false);
+  const change = (oldPassword, newPassword) =>
+    api("/api/password", "POST", { username: "operator", oldPassword, newPassword });
+  // A wrong current password is refused by the counted HTTP Basic check; no form is sent.
+  const sent = iris.calls.length;
+  await assert.rejects(change("wrong-password", "new-password-1"), (e) => e.status === 401 && /refused the current password/.test(e.message));
+  assert.equal(iris.state.invalidLogins, 2);
+  assert.ok(!iris.calls.slice(sent).some((c) => c.init.method === "POST"));
+  // IRIS password rules: the IRIS text is shown as it is, and nothing changes.
+  await assert.rejects(
+    change("right-password", "short"),
+    (e) => e.status === 422 && e.message === "IRIS did not accept the new password: ERROR #845: Password does not match length or pattern requirements",
+  );
+  assert.equal(iris.state.password, "right-password");
+  await assert.rejects(change("right-password", "right-password"), (e) => e.status === 400 && /different/.test(e.message));
+  const before = iris.calls.length;
+  const session = await change("right-password", "new-password-1");
+  assert.equal(session.passwordChanged, true);
+  assert.equal(session.info.username, "operator");
+  assert.equal(api.signedIn(), true);
+  assert.equal(iris.state.password, "new-password-1");
+  const form = iris.calls.slice(before).find((c) => c.init.method === "POST");
+  assert.equal(form.url.href, "http://localhost:52773/api/relay/account");
+  assert.equal(form.init.headers.Authorization, undefined);
+  assert.equal(form.init.headers["Content-Type"], "application/x-www-form-urlencoded");
+  assert.deepEqual(Object.fromEntries(new URLSearchParams(form.init.body)), {
+    IRISUsername: "operator",
+    IRISOldPassword: "right-password",
+    IRISPassword: "new-password-1",
+  });
+  for (const { url, init } of iris.calls) {
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "error");
+    assert.doesNotMatch(url.href, /password-1|right-password/);
+  }
+  // The session runs on the new password; the old one is gone.
+  const last = iris.calls.at(-1).init.headers.Authorization;
+  assert.equal(last, "Basic " + btoa("operator:new-password-1"));
+  await api("/api/logout", "POST", {});
+  await assert.rejects(api("/api/login", "POST", { username: "operator", password: "right-password" }), { status: 401 });
+  await api("/api/login", "POST", { username: "operator", password: "new-password-1" });
+});
+
+test("password change: only when IRIS requires it, for the named account, over an allowed transport, throttled", async () => {
+  const iris = fakeIris();
+  const api = createIrisAPI({ fetcher: iris.fetcher, location: LOCAL });
+  await assert.rejects(
+    api("/api/password", "POST", { username: "operator", oldPassword: "right-password", newPassword: "new-password-1" }),
+    (e) => e.status === 409 && /does not require/.test(e.message),
+  );
+  assert.ok(!iris.calls.some((c) => c.init.method === "POST"), "no change for an account that IRIS does not ask to change");
+  assert.equal(iris.state.password, "right-password");
+  const calls = iris.calls.length;
+  for (const bad of [{}, { username: "a:b", oldPassword: "x", newPassword: "y" }, { username: "operator", oldPassword: "x", newPassword: "" },
+    { username: "operator", oldPassword: "x", newPassword: "y".repeat(256) }])
+    await assert.rejects(api("/api/password", "POST", bad), { status: 400 });
+  assert.equal(iris.calls.length, calls);
+  // IRIS confirms a different account than the one named: never reported as done.
+  const other = fakeIris({ "/api/relay/account": (u, init) =>
+    init.method === "POST" ? json({ username: "SomeoneElse" }) : json({ reason: "password-change-required" }, 401) });
+  const otherApi = createIrisAPI({ fetcher: other.fetcher, location: LOCAL });
+  await assert.rejects(
+    otherApi("/api/password", "POST", { username: "operator", oldPassword: "right-password", newPassword: "new-password-1" }),
+    (e) => e.status === 502 && /did not confirm the account/.test(e.message),
+  );
+  assert.equal(otherApi.signedIn(), false);
+  let sentRemote = 0;
+  const remote = createIrisAPI({ fetcher: async () => (sentRemote++, ok({})), location: page("http://iris.example/relay/index.html") });
+  await assert.rejects(
+    remote("/api/password", "POST", { username: "operator", oldPassword: "right-password", newPassword: "new-password-1" }),
+    (e) => e.status === 403 && /Sign-in blocked/.test(e.message),
+  );
+  assert.equal(sentRemote, 0);
+  iris.state.mustChange = true;
+  for (let i = 0; i < 5; i++)
+    await assert.rejects(
+      api("/api/password", "POST", { username: "operator", oldPassword: "guess-" + i, newPassword: "new-password-1" }),
+      { status: 401 },
+    );
+  const count = iris.calls.length;
+  await assert.rejects(
+    api("/api/password", "POST", { username: "operator", oldPassword: "right-password", newPassword: "new-password-1" }),
+    { status: 429 },
+  );
+  assert.equal(iris.calls.length, count);
+  assert.equal(iris.state.invalidLogins, 5);
+});
+
+test("outside %SYS IRIS does not say why a sign-in failed: the page offers the change and IRIS decides", async () => {
+  const iris = fakeIris({}, { namespace: "USER" });
+  iris.state.mustChange = true;
+  const api = createIrisAPI({ fetcher: iris.fetcher, location: LOCAL });
+  await assert.rejects(
+    api("/api/login", "POST", { username: "operator", password: "right-password" }),
+    (e) => e.status === 401 && e.reason === "unknown" && e.portal === "http://localhost:52773/csp/sys/UtilHome.csp",
+  );
+  assert.deepEqual(iris.calls.map((c) => c.url.pathname), ["/api/relay/account"]);
+  await assert.rejects(
+    api("/api/password", "POST", { username: "operator", oldPassword: "wrong-password", newPassword: "new-password-1" }),
+    (e) => e.status === 422 && e.reason === "unknown" && /does not tell this page which/.test(e.message),
+  );
+  assert.equal(iris.state.password, "right-password");
+  const session = await api("/api/password", "POST", { username: "operator", oldPassword: "right-password", newPassword: "new-password-1" });
+  assert.equal(session.passwordChanged, true);
+  assert.equal(iris.state.password, "new-password-1");
 });

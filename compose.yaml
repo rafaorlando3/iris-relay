@@ -1,6 +1,12 @@
 # One-command lab: docker compose up -d, then open http://127.0.0.1:8787
-# Credentials: docker compose exec iris cat /usr/irissys/mgr/relay/lab-credentials.json
-# Disposable demonstration data only. Both ports are published on 127.0.0.1 only.
+# Relay credentials: docker compose exec iris cat /usr/irissys/mgr/relay/lab-credentials.json
+# The IRIS web server is published too: Management Portal at
+# http://127.0.0.1:52773/csp/sys/UtilHome.csp (SuperUser / SYS, local lab only) and the
+# IRIS-served Relay UI at http://127.0.0.1:52773/relay/index.html.
+# Disposable demonstration data only. Every port is published on 127.0.0.1 only.
+# IRIS_BIND=0.0.0.0 publishes the IRIS web server on every interface (plain HTTP, the
+# well-known SuperUser / SYS login: only on a trusted network, and change that password).
+# IRIS_PORT=52774 picks another host port if 52773 is taken.
 name: iris-relay
 
 services:
@@ -10,14 +16,19 @@ services:
       - --before
       - rm -f /usr/irissys/mgr/relay/.bootstrap-ok
       - --after
-      - python3 /opt/relay/scripts/bootstrap.py --src /opt/relay --credentials-file /usr/irissys/mgr/relay/lab-credentials.json --public-url http://127.0.0.1:52773 --ready-file /usr/irissys/mgr/relay/.bootstrap-ok
+      # --unexpire-predefined and --serve-ui are for this local lab only;
+      # compose.demo.yaml replaces this command without them.
+      - python3 /opt/relay/scripts/bootstrap.py --src /opt/relay --credentials-file /usr/irissys/mgr/relay/lab-credentials.json --public-url http://127.0.0.1:52773 --ready-file /usr/irissys/mgr/relay/.bootstrap-ok --unexpire-predefined --serve-ui /opt/relay/web/relay
     volumes:
       - ./src:/opt/relay/src:ro
       - ./fixtures:/opt/relay/fixtures:ro
       - ./scripts:/opt/relay/scripts:ro
+      - ./web:/opt/relay/web:ro
     ports:
-      # Relay shares this network namespace; IRIS itself is not published.
+      # Relay (Node) shares this network namespace, so its port is published here.
       - "127.0.0.1:8787:8787"
+      # IRIS web server: Management Portal, /api/admin, /api/relay and /relay.
+      - "${IRIS_BIND:-127.0.0.1}:${IRIS_PORT:-52773}:52773"
     mem_limit: 2g
     cpus: 2
     healthcheck:

@@ -7,7 +7,11 @@ credentials on stdin) and by docker compose (which mounts the repository and kee
 generated credentials inside the container). Every step is idempotent.
 
 Never run it against an instance with real data: it creates a %All lab account and
-disposable demonstration objects.
+disposable demonstration objects. The two lab-only options below are passed by
+compose.yaml alone (the public demo overlay and scripts/lab.py do not pass them):
+--unexpire-predefined lifts the expired state that the official image ships for the
+predefined accounts (SuperUser, _SYSTEM, Admin and the others, password SYS), and
+--serve-ui lets IRIS serve the Relay UI of the checkout at /relay.
 """
 import argparse
 import base64
@@ -103,6 +107,35 @@ def lab_accounts(creds):
 if '##class(Security.Users).Exists("RelayObserver") { set sc=##class(Security.Users).Create("RelayObserver","%%Operator","%s") if $SYSTEM.Status.IsError(sc) { halt } }
 write "RELAY_READY",!
 ''' % (creds['password'], creds['observerPassword']), secrets=[creds['password'], creds['observerPassword']])
+
+
+def unexpire_predefined(marker):
+    """Local lab only: the official image ships SuperUser, _SYSTEM, Admin and the other
+    predefined accounts with expired passwords (SYS). Lift that once per container, as the
+    community templates do, so the Management Portal accepts SuperUser / SYS without a
+    change prompt. Once only: a password expired later on purpose stays expired."""
+    if marker.exists():
+        return
+    session('''set sc=##class(Security.Users).UnExpireUserPasswords("*",.count) if $SYSTEM.Status.IsError(sc) { write "RELAY_STEP_FAILED unexpire: ",$SYSTEM.Status.GetErrorText(sc),! halt }
+write "RELAY_READY ",count,!
+''')
+    marker.write_text(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + '\n')
+
+
+def serve_ui(directory):
+    """Local lab only: IRIS serves the Relay UI of the checkout at /relay, as the IPM package
+    does (static files only: CSP/ZEN and auto-compile off, no sign-in for the files; the page
+    signs in to /api/admin and /api/relay with the operator's account)."""
+    path = Path(directory)
+    if not (path / 'index.html').is_file():
+        raise RuntimeError('No Relay UI at ' + str(path) + ' (index.html missing).')
+    if not re.fullmatch(r'/[A-Za-z0-9_./-]+', str(path)):
+        raise RuntimeError('Unexpected UI directory name: ' + str(path))
+    session('''set props("NameSpace")="USER",props("Path")="%(p)s/",props("ServeFiles")=1,props("Recurse")=1,props("CSPZENEnabled")=0,props("AutoCompile")=0,props("AutheEnabled")=64,props("Enabled")=1,props("Description")="IRIS Relay web UI from the lab checkout: static files only (CSP/ZEN off)"
+if '##class(Security.Applications).Exists("/relay") { set sc=##class(Security.Applications).Create("/relay",.props) } else { set sc=##class(Security.Applications).Modify("/relay",.props) }
+if $SYSTEM.Status.IsError(sc) { write "RELAY_STEP_FAILED /relay: ",$SYSTEM.Status.GetErrorText(sc),! halt }
+write "RELAY_READY",!
+''' % {'p': str(path).rstrip('/')})
 
 
 DEMO_ROLES = '%Manager'
@@ -214,16 +247,28 @@ def main():
     source.add_argument('--credentials-file', help='use this file, or create it (0600) with new credentials')
     parser.add_argument('--public-url', default='http://127.0.0.1:52785', help='URL recorded in a newly created credentials file')
     parser.add_argument('--ready-file', help='write this marker after a successful setup (compose health check)')
+    parser.add_argument('--unexpire-predefined', action='store_true',
+                        help='local lab only: lift the expired passwords of the predefined accounts (SuperUser / SYS), '
+                             'once per container')
+    parser.add_argument('--serve-ui', metavar='DIR',
+                        help='local lab only: IRIS serves the Relay UI in DIR (web/relay of the checkout) at /relay')
     parser.add_argument('--demo-account', action='store_true',
                         help='also create the shared public-demo account from RELAY_DEMO_USER / RELAY_DEMO_PASSWORD '
                              'and plant the labelled, simulated incident used by the guided tour')
     args = parser.parse_args()
     src = Path(args.src).resolve()
     wait_running()
+    if args.unexpire_predefined and args.demo_account:
+        raise RuntimeError('--unexpire-predefined is for the local lab only, never with --demo-account.')
     creds = load_credentials(args)
     lab_accounts(creds)
     install_extension(src)
     fixtures(src, creds)
+    if args.unexpire_predefined:
+        manager = Path(run('iris', 'qlist', 'IRIS').stdout.split('^')[1]) / 'mgr'
+        unexpire_predefined(manager / 'relay' / '.predefined-unexpired')
+    if args.serve_ui:
+        serve_ui(args.serve_ui)
     if args.demo_account:
         demo_account(os.environ.get('RELAY_DEMO_USER', 'RelayDemoOperator'), os.environ.get('RELAY_DEMO_PASSWORD'))
         demo_incident()

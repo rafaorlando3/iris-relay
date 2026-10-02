@@ -309,9 +309,34 @@ form button {
   margin-top: 24px;
   padding: 13px;
 }
-#login-error {
+#login-error,
+#password-error {
   color: #a34533;
   font-size: 13px;
+  overflow-wrap: anywhere;
+}
+#password-cancel {
+  margin-top: 10px;
+}
+button.link {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #17695e;
+  font-size: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.notice {
+  background: #e9f3f1;
+  border: 1px solid #cfe3de;
+  border-radius: 8px;
+  color: #17695e;
+  font-size: 13px;
+  margin: 24px 0 0;
+  padding: 12px 16px;
 }
 footer {
   font-size: 11px;

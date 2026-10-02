@@ -59,6 +59,10 @@ async function api(path, method = "GET", data) {
   if (!r.ok)
     throw Object.assign(new Error(v.error || "Request failed"), {
       status: r.status,
+      // A refused sign-in: why IRIS refused it and where the Management Portal is.
+      reason: v.reason,
+      portal: v.portal,
+      passwordChanged: v.passwordChanged,
     });
   return v;
 }
@@ -131,11 +135,74 @@ function disconnected() {
   $("manage-body").replaceChildren();
   $("review").close();
   pendingChange = null;
+  $("notice").hidden = true;
+  hidePasswordChange();
   resetTour();
 }
 if (irisMode) {
   $("login").querySelector("button[type=submit]").disabled = !!irisBlocked;
+  $("password-submit").disabled = !!irisBlocked;
   $("login-error").textContent = irisBlocked;
+}
+// A message with an optional link to the IRIS Management Portal, which offers its own
+// password change when you sign in there.
+function showMessage(target, message, portal) {
+  target.replaceChildren(message || "");
+  if (!portal) return;
+  const a = el("a", "IRIS Management Portal");
+  a.href = portal;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  target.append(" ", a);
+}
+// Password change that IRIS requires (an expired password, or "change password at
+// next login"). IRIS checks the current password and applies its password rules;
+// the page keeps both only in these fields until the change is done.
+function showPasswordChange(username, password, reason) {
+  const form = $("password-change");
+  form.reset();
+  form.elements.username.value = username || "";
+  form.elements.oldPassword.value = password || "";
+  $("password-reason").textContent = reason;
+  $("password-error").textContent = "";
+  $("login").hidden = true;
+  form.hidden = false;
+  (password ? form.elements.newPassword : form.elements.oldPassword).focus();
+}
+function hidePasswordChange() {
+  $("password-change").reset();
+  $("password-change").hidden = true;
+  $("login").hidden = false;
+}
+function loginHelp(error = {}, username = "", password = "") {
+  const help = $("login-help");
+  help.replaceChildren();
+  if (error.reason === "unknown") {
+    const change = el("button", "Change password", "link");
+    change.type = "button";
+    change.addEventListener("click", () =>
+      showPasswordChange(
+        username,
+        password,
+        "If IRIS requires a new password for this account, change it here. IRIS checks your current password and its password rules.",
+      ),
+    );
+    help.append("Password expired? ", change, ".");
+  }
+  if (error.portal) {
+    const a = el("a", "IRIS Management Portal");
+    a.href = error.portal;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    help.append(
+      help.childNodes.length
+        ? " You can also change it in the "
+        : "If your password expired, change it in the ",
+      a,
+      ", which offers the change when you sign in.",
+    );
+  }
+  help.hidden = !help.childNodes.length;
 }
 $("login").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -146,15 +213,61 @@ $("login").addEventListener("submit", async (e) => {
   }
   b.disabled = true;
   $("login-error").textContent = "";
+  loginHelp();
+  const data = Object.fromEntries(new FormData(e.target));
   try {
-    const data = Object.fromEntries(new FormData(e.target));
     const result = await api("/api/login", "POST", data);
     e.target.reset();
     connected(result);
-  } catch (e) {
-    $("login-error").textContent = e.message;
+  } catch (error) {
+    $("login-error").textContent = error.message;
+    if (error.reason === "password-change-required") {
+      $("login-error").textContent = "";
+      showPasswordChange(data.username, data.password, error.message);
+    } else loginHelp(error, data.username, data.password);
   } finally {
-    b.disabled = false;
+    b.disabled = !!irisBlocked;
+  }
+});
+$("password-cancel").addEventListener("click", hidePasswordChange);
+$("password-change").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const b = $("password-submit");
+  if (irisBlocked) {
+    $("password-error").textContent = irisBlocked;
+    return;
+  }
+  const v = Object.fromEntries(new FormData(e.target));
+  if (v.newPassword !== v.repeatPassword) {
+    $("password-error").textContent = "The two new passwords are different. Type the same new password twice.";
+    return;
+  }
+  if (v.newPassword === v.oldPassword) {
+    $("password-error").textContent = "Choose a new password that is different from the current one.";
+    return;
+  }
+  b.disabled = true;
+  $("password-error").textContent = "";
+  try {
+    const result = await api("/api/password", "POST", {
+      username: v.username,
+      oldPassword: v.oldPassword,
+      newPassword: v.newPassword,
+    });
+    hidePasswordChange();
+    $("login").reset();
+    loginHelp();
+    connected(result);
+    $("notice").textContent = `IRIS changed the password of ${result.info.username || v.username}. You are signed in with the new password; the old one no longer works.`;
+    $("notice").hidden = false;
+  } catch (error) {
+    if (error.passwordChanged) {
+      // IRIS changed it; only the sign-in after it failed. Back to the sign-in form.
+      hidePasswordChange();
+      $("login-error").textContent = error.message;
+    } else showMessage($("password-error"), error.message, error.portal);
+  } finally {
+    b.disabled = !!irisBlocked;
   }
 });
 $("logout").addEventListener("click", async () => {

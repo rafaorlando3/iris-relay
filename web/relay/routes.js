@@ -44,10 +44,45 @@ export const validCredentials = (c) =>
   !!c.password &&
   !c.username.includes(":");
 
+// Small JSON answers on refusals (the Relay extension's sign-in reasons), never more.
+export const MAX_ERROR_BODY_BYTES = 4096;
+
+// The reason fields of a refusal, or null: at most 4 KiB, strings only.
+async function smallJson(response) {
+  try {
+    const reader = response.body?.getReader();
+    if (!reader) return null;
+    let text = "",
+      bytes = 0;
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.length;
+      if (bytes > MAX_ERROR_BODY_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    const parsed = JSON.parse(text + decoder.decode());
+    if (!parsed || typeof parsed !== "object") return null;
+    const body = {};
+    for (const key of ["reason", "detail", "error"])
+      if (typeof parsed[key] === "string") body[key] = parsed[key].slice(0, 500);
+    return body;
+  } catch {
+    return null;
+  }
+}
+
 // One IRIS request as the operator: HTTP Basic, no redirects, a timeout, a 2 MiB
 // response cap, IRIS status errors treated as failures and credential-like fields
 // redacted. `signal` (browser) cancels everything when the operator signs out;
 // `init` adds fetch options such as credentials: "omit".
+// `options.form` sends those fields form-encoded instead of HTTP Basic (the IRIS
+// login form fields used for a password change); `options.errorBody` keeps the
+// reason fields of a small JSON refusal (reason, detail).
 export function createUpstream({
   fetcher,
   target,
@@ -62,6 +97,7 @@ export function createUpstream({
     data,
     base = "/api/admin",
     timeoutMs = 10000,
+    options = {},
   ) {
     const signedOut = {
       ok: false,
@@ -78,25 +114,34 @@ export function createUpstream({
     const cancel = () => controller.abort();
     signal?.addEventListener("abort", cancel, { once: true });
     try {
+      const form = options.form ? new URLSearchParams(options.form).toString() : null;
       const response = await fetcher(new URL(base + path, target), {
         ...init,
         method,
         redirect: "error",
         signal: controller.signal,
         headers: {
-          Authorization: "Basic " + base64(credentials.username + ":" + credentials.password),
+          ...(form
+            ? { "Content-Type": "application/x-www-form-urlencoded" }
+            : {
+                Authorization: "Basic " + base64(credentials.username + ":" + credentials.password),
+                ...(data ? { "Content-Type": "application/json" } : {}),
+              }),
           Accept: "application/json",
-          ...(data ? { "Content-Type": "application/json" } : {}),
         },
-        ...(data ? { body: JSON.stringify(data) } : {}),
+        ...(form ? { body: form } : data ? { body: JSON.stringify(data) } : {}),
       });
       if (!response.ok) {
-        await response.body?.cancel();
-        return {
+        const refusal = {
           ok: false,
           status: response.status,
           error: apiError(response.status),
         };
+        if (!options.errorBody) {
+          await response.body?.cancel();
+          return refusal;
+        }
+        return { ...refusal, body: await smallJson(response) };
       }
       const reader = response.body.getReader();
       let bytes = 0,
@@ -163,9 +208,53 @@ export function createUpstream({
   };
 }
 
+// The IRIS Management Portal sign-in, which offers its own password change.
+export const PORTAL_PATH = "/csp/sys/UtilHome.csp";
+export const CHANGE_REQUIRED = "password-change-required";
+export const MESSAGES = {
+  changeRequired:
+    "IRIS requires a new password for this account before it can sign in. Choose one below: IRIS checks your current password and its password rules.",
+  refusedUnknown:
+    "IRIS refused the sign-in. Check the username and password. If your password expired or must be changed, choose Change password.",
+  oldRefused: "IRIS refused the current password for this account.",
+  notRequired:
+    "IRIS does not require a password change for this account. Sign in with your current password.",
+  noExtension:
+    "This IRIS instance has no Relay extension at /api/relay, so Relay cannot change the password here. Change it in the IRIS Management Portal, which offers the change when you sign in.",
+  changeRefusedUnknown:
+    "IRIS did not accept the change. Either the current password is not correct or the new password does not meet the password rules of this instance, and IRIS does not tell this page which. Try again, or change it in the IRIS Management Portal.",
+};
+
+// The signed-in account, from the Relay extension (Relay.Api /account). On a refused
+// sign-in it is the only IRIS endpoint that says why, for example an expired password.
+const account = (upstream, credentials, form) =>
+  upstream(
+    credentials,
+    "/account",
+    form ? "POST" : "GET",
+    undefined,
+    "/api/relay",
+    10000,
+    form ? { errorBody: true, form } : { errorBody: true },
+  );
+
 // Sign-in check: the account must reach /api/admin and the instance must expose API v2.
-export async function signIn(credentials, upstream) {
+// The Relay extension is asked first, and its refusal is final: a wrong password costs
+// one IRIS login attempt, never two. Without the extension (404) the check goes on at
+// /api/admin as before. `relayRequired` (IRIS-served UI): the extension comes with the
+// same package, so a 404 is IRIS refusing the sign-in in a namespace other than %SYS,
+// where it does not say why.
+export async function signIn(credentials, upstream, { relayRequired = false } = {}) {
+  const probe = await account(upstream, credentials);
+  if (probe.status === 401)
+    return probe.body?.reason === CHANGE_REQUIRED
+      ? { status: 401, reason: CHANGE_REQUIRED, error: MESSAGES.changeRequired }
+      : { status: 401, error: probe.error };
+  if (probe.status === 404 && relayRequired)
+    return { status: 401, reason: "unknown", error: MESSAGES.refusedUnknown };
   const info = await upstream(credentials, "/info");
+  if (info.status === 401 && probe.status === 404)
+    return { status: 401, reason: "no-extension", error: info.error };
   if (!info.ok) return { status: info.status, error: info.error };
   const check = await upstream(credentials, "/v2/tasks?maxRows=1");
   if (check.status === 404)
@@ -176,6 +265,67 @@ export async function signIn(credentials, upstream) {
     };
   if (check.status === 503) return { status: 503, error: check.error };
   return { status: 200, info: info.data };
+}
+
+export const validPasswordChange = (c) =>
+  !!c &&
+  ["username", "oldPassword", "newPassword"].every(
+    (key) => typeof c[key] === "string" && c[key].length > 0 && c[key].length <= 255,
+  ) &&
+  c.username.length <= 160 &&
+  !c.username.includes(":");
+
+// Change a password that IRIS requires to be changed, as IRIS itself does it.
+// 1. The current password goes to IRIS as an ordinary HTTP Basic sign-in, so IRIS
+//    checks it, counts a failure against its login limit and audits it; only an
+//    account IRIS reports as "password change required" goes on.
+// 2. IRIS changes it: the standard IRIS login form fields (IRISUsername,
+//    IRISOldPassword, IRISPassword), handled by the IRIS web login before any Relay
+//    code runs, so IRIS checks the current password again and applies its password
+//    rules. The Relay extension only reports which account is then signed in.
+// Nothing is kept: the caller signs in with the new password on success.
+// Returns { status, error, reason?, failed? } or { status: 200, credentials }.
+export async function changePassword(input, upstream, { relayRequired = false } = {}) {
+  if (!validPasswordChange(input))
+    return {
+      status: 400,
+      error: "Enter your IRIS username, your current password and a new password (up to 255 characters).",
+    };
+  if (input.newPassword === input.oldPassword)
+    return { status: 400, error: "Choose a new password that is different from the current one." };
+  const check = await account(upstream, { username: input.username, password: input.oldPassword });
+  // Signed in (or signed in without access to the namespace): nothing to change here.
+  if (check.ok || check.status === 403) return { status: 409, error: MESSAGES.notRequired };
+  if (check.status === 404 && !relayRequired)
+    return { status: 501, reason: "no-extension", error: MESSAGES.noExtension };
+  if (check.status === 401 && check.body?.reason !== CHANGE_REQUIRED)
+    return { status: 401, error: MESSAGES.oldRefused, failed: true };
+  if (check.status !== 401 && check.status !== 404)
+    return { status: check.status, error: check.error };
+  const change = await account(upstream, null, {
+    IRISUsername: input.username,
+    IRISOldPassword: input.oldPassword,
+    IRISPassword: input.newPassword,
+  });
+  if (change.ok) {
+    const name = change.data?.username;
+    if (typeof name !== "string" || name.toLowerCase() !== input.username.toLowerCase())
+      return {
+        status: 502,
+        error: "IRIS did not confirm the account after the change. Sign in again to check which password is valid.",
+      };
+    return { status: 200, credentials: { username: input.username, password: input.newPassword } };
+  }
+  if (change.status === 401 && change.body?.reason === "password-rejected")
+    return {
+      status: 422,
+      reason: "password-rejected",
+      error: "IRIS did not accept the new password: " + (change.body.detail || "no reason given."),
+    };
+  if (change.status === 401) return { status: 401, error: MESSAGES.oldRefused, failed: true };
+  if (change.status === 404 && relayRequired)
+    return { status: 422, reason: "unknown", error: MESSAGES.changeRefusedUnknown, failed: true };
+  return { status: change.status, error: change.error };
 }
 
 // Authenticated API routes. Returns { status, data }, or null for an unknown route.

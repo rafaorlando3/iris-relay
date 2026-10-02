@@ -29,6 +29,14 @@ Entry for the [InterSystems Programming Contest: Build Your Own Management Porta
 | First Time Contribution | First Open Exchange contest for the author |
 | Video on YouTube | [Demo recorded on the real lab](https://youtu.be/i_EW6gS3EJg); newer [0.4 guided tour](https://youtu.be/A5OkIV2Q3xA) |
 
+## Lab basics from the expert review (0.5.0)
+
+Robert Cemper's review of October 2 asked for three basics, all part of 0.5.0:
+
+* **Port 52773 is published** by `docker compose up -d`, on 127.0.0.1 (`IRIS_BIND=0.0.0.0` to open it to the network, `IRIS_PORT` for another port): Management Portal at http://127.0.0.1:52773/csp/sys/UtilHome.csp, the IRIS-served Relay at http://127.0.0.1:52773/relay/index.html. The public demo overlay keeps IRIS unpublished.
+* **Pre-expired passwords are reset in the lab**: `SuperUser` / `SYS` signs in to the Management Portal without a change prompt (local lab only; the demo and the IPM package do not touch users).
+* **Password change at the Relay sign-in**: an account whose IRIS password expired or must be changed gets the change offered right there, in the Node version and in the IRIS-served UI; IRIS checks the old password, applies its password rules and counts failures ([how it works](../README.md#how-the-password-change-works)).
+
 ## IPM package: the UI starts and works with IRIS alone (0.5.0)
 
 The organizers' condition for this bonus: after installation through IPM, the application must start and work without additional tools such as a Node.js or Python server, and the package must include the UI. From 0.5.0:

@@ -24,7 +24,7 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 | --- | --- |
 | Complexity | Every change is reviewed, re-checked, applied once and read back from IRIS ([How a change works](#how-a-change-works)). Log similarity search runs inside IRIS with Embedded Python and IRIS Vector Search ([New in 0.4](#new-in-04-search-every-log-file-by-similarity-iris-vector-search)). |
 | Clarity of instructions | One-command [Quick start](#quick-start-one-command-about-2-minutes), a 5-minute tour and the full reviewer script in [docs/DEMO.md](docs/DEMO.md). |
-| Developer experience | No runtime npm dependencies, 64 JavaScript and 29 Python tests ([Validation](#validation)), and an IPM package that installs the full UI, served by IRIS with no Node.js ([IPM](#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)). |
+| Developer experience | No runtime npm dependencies, 69 JavaScript and 36 Python tests ([Validation](#validation)), and an IPM package that installs the full UI, served by IRIS with no Node.js ([IPM](#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)). |
 | Applicability | Shift handover with baseline comparison and Markdown/JSON export; archived `messages.old_*` logs from Community idea [DPI-I-966](https://ideas.intersystems.com/ideas/DPI-I-966). |
 | Usability | Before/after preview on every change, a plain "Applied and verified in IRIS" status and a guided tour on a labelled incident ([At a glance](#at-a-glance)). |
 
@@ -59,7 +59,18 @@ docker compose exec iris cat /usr/irissys/mgr/relay/lab-credentials.json
 
 Open http://127.0.0.1:8787 (use `127.0.0.1`, not `localhost`) and sign in with `username` and `password` from that file. `RelayObserver` with `observerPassword` has only the `%Operator` role, so you can also see how IRIS limits a restricted account.
 
-Compose starts the pinned IRIS Community 2026.2 container, runs `scripts/bootstrap.py` inside it (Relay extension, lab accounts with generated passwords kept inside the container, disposable demo fixtures) and starts Relay once IRIS reports ready. Only port 8787 is published, on 127.0.0.1; IRIS itself is not published. Stop with `docker compose down` (the next `up` creates a fresh lab with new passwords).
+The lab also publishes the IRIS web server on `127.0.0.1:52773`:
+
+| What | URL |
+| --- | --- |
+| IRIS Management Portal | http://127.0.0.1:52773/csp/sys/UtilHome.csp |
+| Relay served by IRIS (the IPM version of the UI, no Node.js) | http://127.0.0.1:52773/relay/index.html |
+
+**Default lab login: `SuperUser` / `SYS` (local lab only).** The official IRIS image ships its predefined accounts (`SuperUser`, `_SYSTEM`, `Admin` and the others) with the password `SYS`, already expired. The lab lifts that expiry once, when the container is created (`##class(Security.Users).UnExpireUserPasswords("*")`, as the community templates do), so the Management Portal and Relay accept `SuperUser` / `SYS` without a change prompt. That is a well-known password: use it only in this disposable lab on your own machine, and change it (or use the generated `RelayLab` account above) as soon as the lab is reachable by anyone else. The public demo and the IPM package never do this; the IPM install creates and changes no users.
+
+Compose starts the pinned IRIS Community 2026.2 container, runs `scripts/bootstrap.py` inside it (Relay extension, lab accounts with generated passwords kept inside the container, disposable demo fixtures, the predefined accounts unexpired and the Relay UI served by IRIS at `/relay`) and starts Relay once IRIS reports ready. Both ports are published on 127.0.0.1 only. `IRIS_BIND=0.0.0.0 docker compose up -d` publishes the IRIS web server on every interface: it is plain HTTP with the well-known `SuperUser` / `SYS` login, so do that only on a trusted network and change the password first (the IRIS-served Relay also refuses to sign in over plain HTTP on a non-local address). `IRIS_PORT=52774 docker compose up -d` uses another host port if 52773 is taken. Stop with `docker compose down` (the next `up` creates a fresh lab with new passwords).
+
+**Expired passwords at the Relay sign-in.** If IRIS requires a new password for the account you sign in with (an expired password, or "change password at next login"), Relay says so and offers the change right on its sign-in page: current password, new password twice, then it signs you in with the new one. Try it in the lab with a disposable account, for example in `docker compose exec iris iris session IRIS -U %SYS`: `set sc=##class(Security.Users).Create("RelayTry","%Manager","Try-it-123") kill p set p("ChangePassword")=1 set sc=##class(Security.Users).Modify("RelayTry",.p)`, then sign in to Relay as `RelayTry` / `Try-it-123`. [How it works](#how-the-password-change-works).
 
 ## Alternative: lab script and local Node
 
@@ -95,7 +106,9 @@ Then open `https://<your IRIS host>/relay/index.html`, or `http://localhost:5277
 * For the log views and the similarity search: `%Admin_Operate:U`, plus the database role of the namespace where you installed the package (for example `%DB_USER` for USER), because `/api/relay` runs there.
 * For the similarity search: SQL `SELECT` on `Relay.LogLine`, and `INSERT` and `DELETE` to refresh the index, for example `GRANT SELECT, INSERT, DELETE ON Relay.LogLine TO <user>` in that namespace. Repeat the grant after a reinstall, because the table is recreated. The similarity is lexical (hashed words and character trigrams, no language model), over the bounded index described in [New in 0.4](#new-in-04-search-every-log-file-by-similarity-iris-vector-search) (3,000 recent lines per file, 20,000 in total, queries up to 200 characters).
 
-**What gets installed.** `Relay.Api`, `Relay.LogReader` and `Relay.LogLine` in the current namespace; `log_reader.py` and `log_vectors.py` in `<manager directory>/relay/`; the UI files in `<IRIS install directory>/csp/relay/`; the `/relay` web application (static files) and `/api/relay` (password authentication, and every endpoint also checks `%Admin_Operate:U`). It creates no users and no demo data. `zpm "uninstall iris-relay"` removes all of it. Relay Lite, the single page from 0.4.1 with the log views and the similarity search only, stays at `/relay/lite.html`.
+**What gets installed.** `Relay.Api` (also `/api/relay/account`, which tells a signed-in caller its own username and, in `%SYS`, why a sign-in was refused), `Relay.LogReader` and `Relay.LogLine` in the current namespace; `log_reader.py` and `log_vectors.py` in `<manager directory>/relay/`; the UI files in `<IRIS install directory>/csp/relay/`; the `/relay` web application (static files) and `/api/relay` (password authentication, and every endpoint also checks `%Admin_Operate:U`). It creates no users and no demo data. `zpm "uninstall iris-relay"` removes all of it. Relay Lite, the single page from 0.4.1 with the log views and the similarity search only, stays at `/relay/lite.html`.
+
+**Expired passwords.** When IRIS requires a new password for your account, the sign-in page offers the change, the same way as the Node version ([how it works](#how-the-password-change-works)). If the package is installed in a namespace other than `%SYS` (for example USER), IRIS refuses a failed sign-in there before any package code can run, so the page cannot tell an expired password from a wrong one: it then offers Change password next to the sign-in error, IRIS still checks everything, and the page links to the Management Portal. In that case it cannot show the IRIS reason for a refused new password either.
 
 **Only in the Node version:** the public demo mode (a shared account limited to the Relay demonstration objects), the sign-in throttle per client address, a session that survives a page reload (an HttpOnly cookie), and a connection to IRIS on another host: `IRIS_URL=https://your-test-instance.example npm start`.
 
@@ -111,6 +124,17 @@ The files in `web/relay` are built from `public/` and the root modules by `npm r
 | Task management | Scheduled tasks and task history. Suspend or resume user tasks with state verified through the detail endpoint. System tasks are protected. |
 | Operating system | System overview, resources, processes, devices and journal files. |
 | Log monitoring and reporting | Embedded Python reader for `messages.log`, System Monitor and alert logs, **including archived `messages.old_*` files (0.3)**, with backward paging and page search. **Similarity search across all of those files with IRIS Vector Search (0.4).** Background audit queries. Markdown/JSON handover exports. |
+
+## How the password change works
+
+IRIS does the change; Relay never sets a password itself and keeps no copy of the old one.
+
+1. **Detect.** Relay checks a sign-in at `/api/relay/account` first. On a plain HTTP Basic request IRIS answers an expired password with the same empty 401 as a wrong one, but it gives the reason (#935, "password change required") to the web application's login handler, and only when the password was right. `Relay.Api` answers that handler with a JSON reason for `/account` only: `password-change-required`, or `denied` for everything else (wrong password, unknown or disabled account), so it tells no more than a correct password already proves. A refusal there is final: a wrong password costs one IRIS login attempt, not two.
+2. **Check the current password, counted.** When you submit the change, Relay first sends the current password as an ordinary HTTP Basic sign-in. IRIS checks it, audits it and counts a failure against its invalid-login limit (the IRIS login form path below does not count a wrong old password, so Relay never skips this step). Relay also counts it in its own sign-in throttle. Only an account that IRIS reports as "password change required" goes on; any other account gets "IRIS does not require a password change".
+3. **IRIS changes it.** Relay posts the standard IRIS login form fields (`IRISUsername`, `IRISOldPassword`, `IRISPassword`, form-encoded, never in a URL) to `/api/relay/account`. The IRIS web login handles them before any Relay code runs: it checks the old password again, applies the password rules of the instance (`PasswordPattern` and any validation routine) and changes the password, exactly as the Management Portal's own change page does. A rule violation comes back verbatim, for example `ERROR #845: Password does not match length or pattern requirements`.
+4. **Confirm and sign in.** Relay checks that IRIS signed in the account you named, then signs in with the new password. The old password stops working.
+
+Boundaries: the endpoint changes only the account whose current password IRIS has just accepted, so it cannot change anyone else's password; the public demo refuses password changes; the IRIS-served page keeps its HTTPS-or-loopback rule for this request too; and nothing is logged. Without the Relay extension (`IRIS_URL` to an instance that does not have it), Relay cannot change the password and links to the Management Portal, which offers the change when you sign in there.
 
 ## How a change works
 
@@ -174,11 +198,11 @@ Docker (pinned official IRIS Community 2026.2 image, one-command `docker compose
 [![tests](https://github.com/rafaorlando3/iris-relay/actions/workflows/tests.yml/badge.svg)](https://github.com/rafaorlando3/iris-relay/actions/workflows/tests.yml)
 
 ```sh
-npm test            # 64 JavaScript tests
-npm run test:logs   # 29 Python tests (log reader, similarity index, lab helper, demo incident)
+npm test            # 69 JavaScript tests
+npm run test:logs   # 36 Python tests (log reader, similarity index, lab helper, demo incident, lab options)
 ```
 
-With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). The 0.5.0 IPM path was checked end to end in Chromium on a fresh IRIS 2026.2 (install, every UI area, changes read back from IRIS, uninstall). See [docs/VALIDATION.md](docs/VALIDATION.md).
+With the lab and Relay running, `python3 scripts/verify-management.py` and `python3 scripts/verify-enhancements.py` apply and restore real changes on the lab fixtures, check replay and permission denials, all explorer operations, audit queries and every log source (including archived rotations). Verified on IRIS Community 2026.2 Build 221U on ARM64 (September 19) and x86-64 (September 28). The lab basics (IRIS port, unexpired lab accounts, password change at the Relay sign-in) were checked end to end on October 2. The 0.5.0 IPM path was checked end to end in Chromium on a fresh IRIS 2026.2 (install, every UI area, changes read back from IRIS, uninstall). See [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Limitations
 

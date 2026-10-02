@@ -2,8 +2,14 @@
 #   docker compose -f compose.yaml -f compose.demo.yaml up -d
 # Needs a .env file next to it with DEMO_HOST and RELAY_DEMO_PASSWORD (created by the installer).
 # IRIS stays unpublished; Relay stays on 127.0.0.1:8787; only Caddy (80/443) is public.
+# Needs Docker Compose 2.24.4 or newer for !override (Ubuntu 24.04 docker-compose-v2 is newer).
 services:
   iris:
+    # Replaces the lab's list, which also publishes the IRIS web server.
+    ports: !override
+      - "127.0.0.1:8787:8787"
+    # The lab command without its lab-only options: the predefined accounts keep their
+    # expired passwords and IRIS serves no Relay UI.
     command:
       - --before
       - rm -f /usr/irissys/mgr/relay/.bootstrap-ok
