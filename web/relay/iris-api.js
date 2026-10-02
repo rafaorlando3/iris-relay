@@ -19,8 +19,8 @@ import {
   route,
   signIn,
   validCredentials,
-} from "./routes.js?v=0.5.0";
-import { resources } from "./resources.js?v=0.5.0";
+} from "./routes.js?v=0.5.1";
+import { resources } from "./resources.js?v=0.5.1";
 
 export const SESSION_LIFETIME_MS = 30 * 60 * 1000;
 export const MAX_INPUT_BYTES = 16000;

@@ -4,8 +4,8 @@ import {
   configurationState,
   previewConfiguration,
   applyConfiguration,
-} from "./configuration.js?v=0.5.0";
-import { randomHex } from "./random.js?v=0.5.0";
+} from "./configuration.js?v=0.5.1";
+import { randomHex } from "./random.js?v=0.5.1";
 
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });

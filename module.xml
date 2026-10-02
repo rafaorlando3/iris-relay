@@ -3,7 +3,7 @@
   <Document name="iris-relay.ZPM">
     <Module>
       <Name>iris-relay</Name>
-      <Version>0.5.0</Version>
+      <Version>0.5.1</Version>
       <Description>IRIS Relay, served by IRIS: after install, open /relay/index.html for the full operations UI (system overview, web applications and REST explorer, permissions, security, tasks, logs with similarity search, audit, baseline comparison and handover export), with no Node.js or Python server. Every change is reviewed, re-checked, applied once and read back from IRIS. The page calls the SysAdmin REST API (/api/admin) and the package's /api/relay endpoints (Embedded Python reader for current and archived messages.log files, idea DPI-I-966, and IRIS Vector Search) with the operator's own IRIS account. Relay Lite stays at /relay/lite.html.</Description>
       <Keywords>management portal,logs,vector search,embedded python,operations</Keywords>
       <Packaging>module</Packaging>

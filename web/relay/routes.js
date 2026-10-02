@@ -3,15 +3,15 @@
 // /api/tasks, /api/resource), shared by the Node server (server.mjs) and by the
 // browser backend that IRIS serves from the IPM package (iris-api.mjs).
 // It runs unchanged in Node.js 22 and in browsers: no Node built-ins.
-import { startAudit, readAudit } from "./audit.js?v=0.5.0";
-import { operations, buildQuery } from "./explorer.js?v=0.5.0";
+import { startAudit, readAudit } from "./audit.js?v=0.5.1";
+import { operations, buildQuery } from "./explorer.js?v=0.5.1";
 import {
   managementState,
   previewManagement,
   applyManagement,
-} from "./management.js?v=0.5.0";
-import { redact, apiError, resources } from "./resources.js?v=0.5.0";
-import { randomHex } from "./random.js?v=0.5.0";
+} from "./management.js?v=0.5.1";
+import { redact, apiError, resources } from "./resources.js?v=0.5.1";
+import { randomHex } from "./random.js?v=0.5.1";
 
 export const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
