@@ -3,8 +3,8 @@
   <Document name="iris-relay.ZPM">
     <Module>
       <Name>iris-relay</Name>
-      <Version>0.4.0</Version>
-      <Description>IRIS side of IRIS Relay: REST endpoints under /api/relay with a bounded Embedded Python reader for current and archived messages.log files (idea DPI-I-966) and similarity search across them with IRIS Vector Search. The Relay web UI runs with docker compose or Node; see the README.</Description>
+      <Version>0.4.1</Version>
+      <Description>IRIS side of IRIS Relay: REST endpoints under /api/relay with a bounded Embedded Python reader for current and archived messages.log files (idea DPI-I-966) and similarity search across them with IRIS Vector Search. After install, IRIS serves Relay Lite at /relay/index.html (log viewer and lexical similarity search, no Node.js or Python server). The full Relay web UI runs with docker compose or Node; see the README.</Description>
       <Keywords>management portal,logs,vector search,embedded python,operations</Keywords>
       <Packaging>module</Packaging>
       <SourcesRoot>src</SourcesRoot>
@@ -13,6 +13,16 @@
       <Resource Name="Relay.Api.CLS"/>
       <FileCopy Name="src/Relay/log_reader.py" Target="${mgrdir}relay/log_reader.py"/>
       <FileCopy Name="src/Relay/log_vectors.py" Target="${mgrdir}relay/log_vectors.py"/>
+      <FileCopy Name="web/relay/" Target="${cspdir}relay/"/>
+      <WebApplication
+        Url="/relay"
+        Path="${cspdir}relay/"
+        ServeFiles="1"
+        Recurse="1"
+        CSPZENEnabled="0"
+        AutoCompile="0"
+        AutheEnabled="64"
+        Description="IRIS Relay Lite: static files only (CSP/ZEN off); its data comes from /api/relay with password authentication"/>
       <WebApplication
         Url="/api/relay"
         DispatchClass="Relay.Api"
