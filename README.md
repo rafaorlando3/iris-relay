@@ -6,6 +6,7 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 
 ![IRIS Relay: a reviewed task change, applied and verified in IRIS](docs/images/review-verified.png)
 
+* **0.5.1 in 68 seconds, installed with IPM and served by IRIS:** https://youtu.be/P2nvu5BlYP0
 * **0.4 guided tour (1:34):** https://youtu.be/A5OkIV2Q3xA
 * **0.4 tour on InterSystems Developers:** https://youtu.be/QGhXXNL_N08
 * **0.3 walkthrough (2:38):** https://youtu.be/i_EW6gS3EJg
@@ -16,9 +17,9 @@ IRIS Relay is a web UI over the IRIS SysAdmin REST API v2, plus a small IRIS ext
 
 ## For judges: two minutes
 
-1. **Watch** the [1:34 guided tour](https://youtu.be/A5OkIV2Q3xA).
+1. **Watch** the [1:34 guided tour](https://youtu.be/A5OkIV2Q3xA), or [0.5.1 in 68 seconds](https://youtu.be/P2nvu5BlYP0): with transport and CA prerequisites prepared first, two IPM commands install the full UI served by IRIS ([IPM setup](#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)).
 2. **Try it without installing anything:** open the [live IRIS demo](https://78-17-93-244.sslip.io) (shared login on the page) and follow its 5-step guided tour, or use the [no-install walkthrough](https://rafaorlando3.github.io/iris-relay/) with fictional data.
-3. **Run it yourself:** `docker compose up -d` starts IRIS 2026.2 and Relay in about 2 minutes ([Quick start](#quick-start-one-command-about-2-minutes)). On an IRIS you already have: `zpm "install iris-relay"`, then open `/relay/index.html` on that IRIS ([IPM](#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)).
+3. **Run it yourself:** `docker compose up -d` starts IRIS 2026.2 and Relay in about 2 minutes ([Quick start](#quick-start-one-command-about-2-minutes)). On an IRIS you already have: `zpm "repo -r -n registry -url https://pm.community.intersystems.com/"` (once, on a fresh IPM 0.9 or newer) and `zpm "install iris-relay"`, then open `/relay/index.html` on that IRIS ([IPM](#install-with-ipm-the-full-ui-served-by-iris-no-nodejs)).
 
 | Judging criterion | Where to look |
 | --- | --- |
